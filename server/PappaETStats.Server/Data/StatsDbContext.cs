@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using PappaETStats.Server.Domain;
 
 namespace PappaETStats.Server.Data;
@@ -15,6 +16,22 @@ public sealed class StatsDbContext(DbContextOptions<StatsDbContext> options) : D
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // Use a stable GUID storage across providers.
+        // - MySQL/MariaDB cannot use TEXT as a PK without a key length.
+        // - SQLite doesn't care about the declared column type.
+        // Using char(36) keeps migrations provider-agnostic and works everywhere.
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            foreach (var property in entityType.GetProperties())
+            {
+                var clrType = property.ClrType;
+                if (clrType == typeof(Guid) || clrType == typeof(Guid?))
+                {
+                    property.SetColumnType("char(36)");
+                }
+            }
+        }
+
         modelBuilder.Entity<Match>()
             .HasIndex(m => m.ExternalMatchId)
             .IsUnique();

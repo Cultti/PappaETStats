@@ -651,73 +651,27 @@ else
         </MudText>
 
         @PlayersGrid(players, weaponStatsForPlayer)
+    </MudPaper>;
 
+    private RenderFragment PlayersGrid(
+        IReadOnlyList<MatchPlayer> players,
+        Func<MatchPlayer, IEnumerable<WeaponStatView>> weaponStatsForPlayer) => @<div>
         @{
             var totals = ComputeSideTotals(players, weaponStatsForPlayer);
             var totalDamageGiven = players.Sum(p => p.DamageGiven);
             var totalDamageReceived = players.Sum(p => p.DamageReceived);
         }
 
-        <MudDivider Class="my-3" />
-
-        <MudSimpleTable Dense="true" Style="width:100%">
-            <colgroup>
-                <col style="width:28px;" />
-                <col />
-                <col style="width:6ch;" />
-                <col style="width:3ch;" />
-                <col style="width:3ch;" />
-                <col style="width:6ch;" />
-                <col style="width:6ch;" />
-                <col style="width:3ch;" />
-                <col style="width:3ch;" />
-                <col style="width:3ch;" />
-                <col style="width:3ch;" />
-            </colgroup>
-            <thead>
-                <tr>
-                    <th></th>
-                    <th>Totals</th>
-                    <th style="text-align:right;">K/D</th>
-                    <th style="text-align:right;">Kills</th>
-                    <th style="text-align:right;">Deaths</th>
-                    <th style="text-align:right;">Dmg G</th>
-                    <th style="text-align:right;">Dmg R</th>
-                    <th style="text-align:right;">HS</th>
-                    <th style="text-align:right;">Gibs</th>
-                    <th style="text-align:right;">SK</th>
-                    <th style="text-align:right;">Rev</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td></td>
-                    <td><strong>Totals</strong></td>
-                    <td style="text-align:right;"><strong>@totals.Kdr.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)</strong></td>
-                    <td style="text-align:right;"><strong>@totals.Kills</strong></td>
-                    <td style="text-align:right;"><strong>@totals.Deaths</strong></td>
-                    <td style="text-align:right;"><strong>@totalDamageGiven</strong></td>
-                    <td style="text-align:right;"><strong>@totalDamageReceived</strong></td>
-                    <td style="text-align:right;"><strong>@totals.Headshots</strong></td>
-                    <td style="text-align:right;"><strong>@totals.Gibs</strong></td>
-                    <td style="text-align:right;"><strong>@totals.SelfKills</strong></td>
-                    <td style="text-align:right;"><strong>@totals.Revives</strong></td>
-                </tr>
-            </tbody>
-        </MudSimpleTable>
-    </MudPaper>;
-
-    private RenderFragment PlayersGrid(
-        IReadOnlyList<MatchPlayer> players,
-        Func<MatchPlayer, IEnumerable<WeaponStatView>> weaponStatsForPlayer) => @<MudDataGrid T="MatchPlayer"
-            Items="players.OrderByDescending(p => p.DamageGiven)"
-            Dense="true"
-            Hover="true"
-            ReadOnly="true"
-            SortMode="MudBlazor.SortMode.None"
-            expand-single-row="true"
-            Class="pappa-players-grid">
-        <Columns>
+        <MudDataGrid T="MatchPlayer"
+                    Items="players.OrderByDescending(p => p.DamageGiven)"
+                    Dense="true"
+                    Hover="true"
+                    ReadOnly="true"
+                    SortMode="MudBlazor.SortMode.None"
+                    expand-single-row="true"
+                    FooterClass="pappa-players-grid-footer"
+                    Class="pappa-players-grid">
+            <Columns>
             <HierarchyColumn T="MatchPlayer" enable-header-toggle="true" />
 
             <TemplateColumn T="MatchPlayer" Title="Player" HeaderClass="pappa-col-player" CellClass="pappa-col-player">
@@ -735,6 +689,9 @@ else
                         }
                     </span>
                 </CellTemplate>
+                <FooterTemplate>
+                    <strong>Totals</strong>
+                </FooterTemplate>
             </TemplateColumn>
 
             <TemplateColumn T="MatchPlayer" Title="K/D" HeaderClass="pappa-col-num pappa-col-kdr" CellClass="pappa-col-num pappa-col-kdr">
@@ -747,6 +704,11 @@ else
                     }
                     @kdr.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
                 </CellTemplate>
+                <FooterTemplate>
+                    <div>
+                        <strong>@totals.Kdr.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)</strong>
+                    </div>
+                </FooterTemplate>
             </TemplateColumn>
 
             <TemplateColumn T="MatchPlayer" Title="Kills" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
@@ -756,6 +718,11 @@ else
                     }
                     @kills
                 </CellTemplate>
+                <FooterTemplate>
+                    <div>
+                        <strong>@totals.Kills</strong>
+                    </div>
+                </FooterTemplate>
             </TemplateColumn>
 
             <TemplateColumn T="MatchPlayer" Title="Deaths" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
@@ -765,10 +732,27 @@ else
                     }
                     @deaths
                 </CellTemplate>
+                <FooterTemplate>
+                    <div>
+                        <strong>@totals.Deaths</strong>
+                    </div>
+                </FooterTemplate>
             </TemplateColumn>
 
-            <PropertyColumn T="MatchPlayer" TProperty="int" Property="x => x.DamageGiven" Title="Dmg G" HeaderClass="pappa-col-num pappa-col-5" CellClass="pappa-col-num pappa-col-5" />
-            <PropertyColumn T="MatchPlayer" TProperty="int" Property="x => x.DamageReceived" Title="Dmg R" HeaderClass="pappa-col-num pappa-col-5" CellClass="pappa-col-num pappa-col-5" />
+            <PropertyColumn T="MatchPlayer" TProperty="int" Property="x => x.DamageGiven" Title="Dmg G" HeaderClass="pappa-col-num pappa-col-5" CellClass="pappa-col-num pappa-col-5">
+                <FooterTemplate>
+                    <div>
+                        <strong>@totalDamageGiven</strong>
+                    </div>
+                </FooterTemplate>
+            </PropertyColumn>
+            <PropertyColumn T="MatchPlayer" TProperty="int" Property="x => x.DamageReceived" Title="Dmg R" HeaderClass="pappa-col-num pappa-col-5" CellClass="pappa-col-num pappa-col-5">
+                <FooterTemplate>
+                    <div>
+                        <strong>@totalDamageReceived</strong>
+                    </div>
+                </FooterTemplate>
+            </PropertyColumn>
 
             <TemplateColumn T="MatchPlayer" Title="HS" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
                 <CellTemplate>
@@ -777,10 +761,27 @@ else
                     }
                     @hs
                 </CellTemplate>
+                <FooterTemplate>
+                    <div>
+                        <strong>@totals.Headshots</strong>
+                    </div>
+                </FooterTemplate>
             </TemplateColumn>
 
-            <PropertyColumn T="MatchPlayer" TProperty="int" Property="x => x.Gibs" Title="Gibs" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2" />
-            <PropertyColumn T="MatchPlayer" TProperty="int" Property="x => x.SelfKills" Title="SK" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2" />
+            <PropertyColumn T="MatchPlayer" TProperty="int" Property="x => x.Gibs" Title="Gibs" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
+                <FooterTemplate>
+                    <div>
+                        <strong>@totals.Gibs</strong>
+                    </div>
+                </FooterTemplate>
+            </PropertyColumn>
+            <PropertyColumn T="MatchPlayer" TProperty="int" Property="x => x.SelfKills" Title="SK" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
+                <FooterTemplate>
+                    <div>
+                        <strong>@totals.SelfKills</strong>
+                    </div>
+                </FooterTemplate>
+            </PropertyColumn>
 
             <TemplateColumn T="MatchPlayer" Title="Rev" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
                 <CellTemplate>
@@ -789,6 +790,11 @@ else
                     }
                     @rev
                 </CellTemplate>
+                <FooterTemplate>
+                    <div>
+                        <strong>@totals.Revives</strong>
+                    </div>
+                </FooterTemplate>
             </TemplateColumn>
         </Columns>
 
@@ -803,26 +809,25 @@ else
                 <MudCardContent Class="pa-0">
                     <MudGrid Class="pa-4" Spacing="2">
                         <MudItem xs="12" md="6">
-                            <MudSimpleTable Dense="true" Style="width:100%">
-                                <colgroup>
+                            @{
+                                var teamRows = new[]
+                                {
+                                    new { Label = "Teamkills", Value = context.Item.TeamKills.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                                    new { Label = "Team Damage Given", Value = context.Item.TeamDamageGiven.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                                    new { Label = "Team Damage Received", Value = context.Item.TeamDamageReceived.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                                };
+                            }
+
+                            <MudTable Dense="true" Hover="false" Breakpoint="Breakpoint.Sm" Items="teamRows" Context="row" Elevation="0">
+                                <ColGroup>
                                     <col />
                                     <col style="width:8ch;" />
-                                </colgroup>
-                                <tbody>
-                                    <tr>
-                                        <td>Teamkills</td>
-                                        <td style="text-align:right;">@context.Item.TeamKills</td>
-                                    </tr>
-                                    <tr>
-                                        <td>Team Dmg Given</td>
-                                        <td style="text-align:right;">@context.Item.TeamDamageGiven</td>
-                                    </tr>
-                                    <tr>
-                                        <td>Team Dmg Received</td>
-                                        <td style="text-align:right;">@context.Item.TeamDamageReceived</td>
-                                    </tr>
-                                </tbody>
-                            </MudSimpleTable>
+                                </ColGroup>
+                                <RowTemplate>
+                                    <MudTd DataLabel="Stat">@row.Label</MudTd>
+                                    <MudTd DataLabel="Value" align="Align.Right">@row.Value</MudTd>
+                                </RowTemplate>
+                            </MudTable>
                         </MudItem>
 
                         <MudItem xs="12" md="6">
@@ -840,25 +845,20 @@ else
 
                             @if (classRows.Count == 0)
                             {
-                                <MudText Typo="Typo.body2">-</MudText>
+                                <MudText Typo="Typo.body2">No class data available</MudText>
                             }
                             else
                             {
-                                <MudSimpleTable Dense="true" Style="width:100%">
-                                    <colgroup>
+                                <MudTable Dense="true" Hover="false" Breakpoint="Breakpoint.Sm" Items="classRows" Context="row" Elevation="0">
+                                    <ColGroup>
                                         <col />
                                         <col style="width:6ch;" />
-                                    </colgroup>
-                                    <tbody>
-                                        @foreach (var row in classRows)
-                                        {
-                                            <tr>
-                                                <td>@row.Name</td>
-                                                <td style="text-align:right;">@row.Time</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </MudSimpleTable>
+                                    </ColGroup>
+                                    <RowTemplate>
+                                        <MudTd DataLabel="Class">@row.Name</MudTd>
+                                        <MudTd DataLabel="Time" align="Align.Right">@row.Time</MudTd>
+                                    </RowTemplate>
+                                </MudTable>
                             }
                         </MudItem>
                     </MudGrid>
@@ -869,7 +869,7 @@ else
                     }
                     else
                     {
-                        <MudTable Dense="true" Hover="true" Breakpoint="Breakpoint.Sm" Items="weaponStats" Context="ws" Elevation="0">
+                        <MudTable Dense="true" Hover="true" Breakpoint="Breakpoint.Sm" Items="weaponStats" Context="ws" Elevation="0" Class="pappa-weapon-stats-table">
                             <ColGroup>
                                 <col />
                                 <col style="width:120px;" />
@@ -899,7 +899,8 @@ else
                 </MudCardContent>
             </MudCard>
         </ChildRowContent>
-    </MudDataGrid>;
+        </MudDataGrid>
+    </div>;
 
     private sealed record WeaponStatView(int Weapon, int Hits, int Atts, int Kills, int Deaths, int Headshots);
 
