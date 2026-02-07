@@ -1,0 +1,543 @@
+@page "/player/{PlayerGuid}"
+@page "/players/{PlayerGuid}"
+@using Microsoft.EntityFrameworkCore
+@using PappaETStats.Server.Data
+@using PappaETStats.Server.Domain
+@inject IDbContextFactory<StatsDbContext> DbFactory
+
+<PageTitle>Player</PageTitle>
+
+<h1>Player</h1>
+
+@if (_loadError is not null)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_loadError</MudAlert>
+}
+else if (_vm is null)
+{
+    <p><em>Loading…</em></p>
+}
+else
+{
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudText Typo="Typo.h5"><EtColoredText Text="@_vm.DisplayName" /></MudText>
+        <MudText Typo="Typo.body2" Class="mt-1"><strong>GUID:</strong> @_vm.PlayerGuid</MudText>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6">Known nicks</MudText>
+        @if (_vm.Nicknames.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mt-1">No nicknames recorded.</MudText>
+        }
+        else
+        {
+            <MudStack Row="true" Spacing="1" Class="mt-2" Style="flex-wrap:wrap">
+                @foreach (var nick in _vm.Nicknames)
+                {
+                    <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small">
+                        <EtColoredText Text="@nick" />
+                    </MudChip>
+                }
+            </MudStack>
+        }
+
+        <MudDivider Class="my-4" />
+
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.h6">Aggregated stats (all rounds)</MudText>
+                <MudSimpleTable Dense="true" Style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Stat</th>
+                            <th style="text-align:right;">Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Games</td>
+                            <td style="text-align:right;">@_vm.Aggregate.Games</td>
+                        </tr>
+                        <tr>
+                            <td>Kills</td>
+                            <td style="text-align:right;">@_vm.Aggregate.Kills</td>
+                        </tr>
+                        <tr>
+                            <td>Deaths</td>
+                            <td style="text-align:right;">@_vm.Aggregate.Deaths</td>
+                        </tr>
+                        <tr>
+                            <td>K/D</td>
+                            <td style="text-align:right;">@_vm.Aggregate.Kdr.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)</td>
+                        </tr>
+                        <tr>
+                            <td>Headshots</td>
+                            <td style="text-align:right;">@_vm.Aggregate.Headshots</td>
+                        </tr>
+                        <tr>
+                            <td>Revives</td>
+                            <td style="text-align:right;">@_vm.Aggregate.Revives</td>
+                        </tr>
+                        <tr>
+                            <td>Damage given</td>
+                            <td style="text-align:right;">@_vm.Aggregate.DamageGiven</td>
+                        </tr>
+                        <tr>
+                            <td>Damage received</td>
+                            <td style="text-align:right;">@_vm.Aggregate.DamageReceived</td>
+                        </tr>
+                        <tr>
+                            <td>Gibs</td>
+                            <td style="text-align:right;">@_vm.Aggregate.Gibs</td>
+                        </tr>
+                        <tr>
+                            <td>Self kills</td>
+                            <td style="text-align:right;">@_vm.Aggregate.SelfKills</td>
+                        </tr>
+                        <tr>
+                            <td>XP</td>
+                            <td style="text-align:right;">@_vm.Aggregate.Xp</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.h6">Weapon stats (all rounds)</MudText>
+                @if (_vm.WeaponStats.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mt-1">No weapon stats recorded.</MudText>
+                }
+                else
+                {
+                    <MudTable Dense="true" Hover="true" Breakpoint="Breakpoint.Sm" Items="_vm.WeaponStats" Context="ws" Elevation="0">
+                        <ColGroup>
+                            <col />
+                            <col style="width:120px;" />
+                            <col style="width:90px;" />
+                            <col style="width:90px;" />
+                            <col style="width:90px;" />
+                            <col style="width:90px;" />
+                        </ColGroup>
+                        <HeaderContent>
+                            <MudTh>Weapon</MudTh>
+                            <MudTh align="Align.Right">Acc</MudTh>
+                            <MudTh align="Align.Right">Hits/Atts</MudTh>
+                            <MudTh align="Align.Right">Kills</MudTh>
+                            <MudTh align="Align.Right">Deaths</MudTh>
+                            <MudTh align="Align.Right">HS</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Weapon">@WeaponName(ws.Weapon)</MudTd>
+                            <MudTd DataLabel="Acc" align="Align.Right">@(ws.Atts <= 0 ? string.Empty : $"{AccuracyPct(ws.Hits, ws.Atts):0.0}%")</MudTd>
+                            <MudTd DataLabel="Hits/Atts" align="Align.Right">@(ws.Atts <= 0 ? string.Empty : $"{ws.Hits}/{ws.Atts}")</MudTd>
+                            <MudTd DataLabel="Kills" align="Align.Right">@(ws.Weapon == 27 ? string.Empty : ws.Kills)</MudTd>
+                            <MudTd DataLabel="Deaths" align="Align.Right">@(ws.Weapon == 27 ? string.Empty : ws.Deaths)</MudTd>
+                            <MudTd DataLabel="HS" align="Align.Right">@(ws.Weapon == 27 ? string.Empty : ws.Headshots)</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6">Matches</MudText>
+        @if (_vm.Matches.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mt-1">No matches found for this GUID.</MudText>
+        }
+        else
+        {
+            <MudTable Items="_vm.Matches" Dense="true" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Ingested</MudTh>
+                    <MudTh>Map</MudTh>
+                    <MudTh>Time</MudTh>
+                    <MudTh>Server</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Ingested">
+                        <MudLink Href="@($"/matches/{context.MatchId}")" Underline="Underline.Always">@context.IngestedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudLink>
+                    </MudTd>
+                    <MudTd DataLabel="Map">@(context.MapName ?? "-")</MudTd>
+                    <MudTd DataLabel="Time">@context.TimeText</MudTd>
+                    <MudTd DataLabel="Server"><EtColoredText Text="@(context.ServerName ?? string.Empty)" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+}
+
+@code {
+    [Parameter]
+    public string? PlayerGuid { get; set; }
+
+    private string? _loadError;
+    private ViewModel? _vm;
+
+    private sealed record MatchRow(Guid MatchId, DateTime IngestedAtUtc, string? MapName, string? ServerName, string TimeText);
+
+    private sealed record PlayerAggregate(
+        int Games,
+        int Xp,
+        int DamageGiven,
+        int DamageReceived,
+        int TeamDamageGiven,
+        int TeamDamageReceived,
+        int Gibs,
+        int SelfKills,
+        int TeamKills,
+        int TeamGibs,
+        int Kills,
+        int Deaths,
+        double Kdr,
+        int Headshots,
+        int Revives);
+
+    private sealed record WeaponStatRow(int Weapon, int Hits, int Atts, int Kills, int Deaths, int Headshots);
+
+    private sealed record WeaponStatRoundRow(
+        Guid MatchId,
+        int RoundNumber,
+        int Weapon,
+        int Hits,
+        int Atts,
+        int Kills,
+        int Deaths,
+        int Headshots);
+
+    private sealed class ViewModel
+    {
+        public required string PlayerGuid { get; init; }
+        public required string DisplayName { get; init; }
+        public required List<string> Nicknames { get; init; }
+        public required PlayerAggregate Aggregate { get; init; }
+        public required List<WeaponStatRow> WeaponStats { get; init; }
+        public required List<MatchRow> Matches { get; init; }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loadError = null;
+        _vm = null;
+
+        var playerGuid = (PlayerGuid ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(playerGuid))
+        {
+            _loadError = "Player GUID is missing.";
+            return;
+        }
+
+        var playerGuidLower = playerGuid.ToLowerInvariant();
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var nickRows = await db.MatchPlayers
+                .AsNoTracking()
+                .Where(p => !string.IsNullOrWhiteSpace(p.Guid) && p.Guid.ToLower() == playerGuidLower)
+                .Where(p => !string.IsNullOrWhiteSpace(p.Name))
+                .Select(p => p.Name)
+                .ToListAsync();
+
+            var nicknames = nickRows
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var displayName = nicknames.Count > 0 ? nicknames[0] : playerGuid;
+
+            // Any-round match ids for link list.
+            var matchIdsAny = await (
+                from p in db.MatchPlayers.AsNoTracking()
+                join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
+                join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
+                where !string.IsNullOrWhiteSpace(p.Guid) && p.Guid.ToLower() == playerGuidLower
+                select r.MatchId
+            )
+            .Distinct()
+            .ToListAsync();
+
+            // Player aggregates across all rounds played.
+            var overallStatsRows = await (
+                from p in db.MatchPlayers.AsNoTracking()
+                join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
+                join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
+                where !string.IsNullOrWhiteSpace(p.Guid)
+                      && p.Guid.ToLower() == playerGuidLower
+                select new
+                {
+                    r.MatchId,
+                    p.Xp,
+                    p.DamageGiven,
+                    p.DamageReceived,
+                    p.TeamDamageGiven,
+                    p.TeamDamageReceived,
+                    p.Gibs,
+                    p.SelfKills,
+                    p.TeamKills,
+                    p.TeamGibs,
+                }
+            ).ToListAsync();
+
+            var overallByMatch = overallStatsRows
+                .GroupBy(x => x.MatchId)
+                .Select(g => new
+                {
+                    MatchId = g.Key,
+                    Xp = g.Sum(x => x.Xp),
+                    DamageGiven = g.Sum(x => x.DamageGiven),
+                    DamageReceived = g.Sum(x => x.DamageReceived),
+                    TeamDamageGiven = g.Sum(x => x.TeamDamageGiven),
+                    TeamDamageReceived = g.Sum(x => x.TeamDamageReceived),
+                    Gibs = g.Sum(x => x.Gibs),
+                    SelfKills = g.Sum(x => x.SelfKills),
+                    TeamKills = g.Sum(x => x.TeamKills),
+                    TeamGibs = g.Sum(x => x.TeamGibs),
+                })
+                .ToList();
+
+            // Weapon stats across all rounds. Some sources store cumulative weapon totals in later rounds.
+            // We roll up per match: if weapon stats appear cumulative, we take the latest round; otherwise we sum rounds.
+            var weaponRoundRows = await (
+                from ws in db.MatchPlayerWeaponStats.AsNoTracking()
+                join p in db.MatchPlayers.AsNoTracking() on ws.MatchPlayerId equals p.Id
+                join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
+                join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
+                where matchIdsAny.Contains(r.MatchId)
+                      && !string.IsNullOrWhiteSpace(p.Guid)
+                      && p.Guid.ToLower() == playerGuidLower
+                group ws by new { r.MatchId, r.RoundNumber, ws.Weapon } into g
+                select new WeaponStatRoundRow(
+                    g.Key.MatchId,
+                    g.Key.RoundNumber,
+                    g.Key.Weapon,
+                    g.Sum(x => x.Hits),
+                    g.Sum(x => x.Atts),
+                    g.Sum(x => x.Kills),
+                    g.Sum(x => x.Deaths),
+                    g.Sum(x => x.Headshots))
+            ).ToListAsync();
+
+            static WeaponStatRow Add(WeaponStatRow a, WeaponStatRow b)
+                => new(
+                    a.Weapon,
+                    a.Hits + b.Hits,
+                    a.Atts + b.Atts,
+                    a.Kills + b.Kills,
+                    a.Deaths + b.Deaths,
+                    a.Headshots + b.Headshots);
+
+            static WeaponStatRow FromRound(WeaponStatRoundRow r)
+                => new(r.Weapon, r.Hits, r.Atts, r.Kills, r.Deaths, r.Headshots);
+
+            static bool NonDecreasing(WeaponStatRoundRow prev, WeaponStatRoundRow next)
+                => next.Hits >= prev.Hits
+                   && next.Atts >= prev.Atts
+                   && next.Kills >= prev.Kills
+                   && next.Deaths >= prev.Deaths
+                   && next.Headshots >= prev.Headshots;
+
+            var overallWeaponByWeapon = new Dictionary<int, WeaponStatRow>();
+
+            foreach (var matchGroup in weaponRoundRows.GroupBy(r => r.MatchId))
+            {
+                var roundGroups = matchGroup
+                    .GroupBy(r => r.RoundNumber)
+                    .OrderBy(g => g.Key)
+                    .Select(g => new { Round = g.Key, Rows = g.ToList() })
+                    .ToList();
+
+                if (roundGroups.Count == 0)
+                {
+                    continue;
+                }
+
+                // Heuristic: if stats are mostly non-decreasing between rounds, treat them as cumulative.
+                var seemsCumulative = false;
+                if (roundGroups.Count >= 2)
+                {
+                    var byRoundWeapon = matchGroup.ToDictionary(x => (x.RoundNumber, x.Weapon), x => x);
+
+                    var checks = 0;
+                    var ok = 0;
+                    for (var i = 1; i < roundGroups.Count; i++)
+                    {
+                        var prevRound = roundGroups[i - 1].Round;
+                        var nextRound = roundGroups[i].Round;
+                        foreach (var next in roundGroups[i].Rows)
+                        {
+                            if (byRoundWeapon.TryGetValue((prevRound, next.Weapon), out var prev))
+                            {
+                                checks++;
+                                if (NonDecreasing(prev, next))
+                                {
+                                    ok++;
+                                }
+                            }
+                        }
+                    }
+
+                    seemsCumulative = checks > 0 && (double)ok / checks >= 0.80;
+                }
+
+                Dictionary<int, WeaponStatRow> perMatch;
+                if (seemsCumulative)
+                {
+                    var latest = roundGroups[^1].Rows;
+                    perMatch = latest
+                        .Select(FromRound)
+                        .GroupBy(x => x.Weapon)
+                        .ToDictionary(g => g.Key, g => g.Aggregate((acc, x) => Add(acc, x)));
+                }
+                else
+                {
+                    perMatch = matchGroup
+                        .Select(FromRound)
+                        .GroupBy(x => x.Weapon)
+                        .ToDictionary(g => g.Key, g => g.Aggregate((acc, x) => Add(acc, x)));
+                }
+
+                foreach (var kv in perMatch)
+                {
+                    if (!overallWeaponByWeapon.TryGetValue(kv.Key, out var existing))
+                    {
+                        overallWeaponByWeapon[kv.Key] = kv.Value;
+                    }
+                    else
+                    {
+                        overallWeaponByWeapon[kv.Key] = Add(existing, kv.Value);
+                    }
+                }
+            }
+
+            var weaponStatsAllRounds = overallWeaponByWeapon.Values
+                .Where(ws => ws.Hits != 0 || ws.Atts != 0 || ws.Kills != 0 || ws.Deaths != 0 || ws.Headshots != 0)
+                .OrderByDescending(x => x.Kills)
+                .ThenBy(x => x.Weapon)
+                .ToList();
+
+            var totalKills = overallWeaponByWeapon.Values.Where(ws => ws.Weapon != 27).Sum(ws => ws.Kills);
+            var totalDeaths = overallWeaponByWeapon.Values.Where(ws => ws.Weapon != 27).Sum(ws => ws.Deaths);
+            var totalHeadshots = overallWeaponByWeapon.Values.Where(ws => ws.Weapon != 27).Sum(ws => ws.Headshots);
+            var totalRevives = overallWeaponByWeapon.Values.Where(ws => ws.Weapon == 27).Sum(ws => ws.Hits);
+            var kdr = totalDeaths <= 0 ? totalKills : (double)totalKills / totalDeaths;
+
+            var agg = new PlayerAggregate(
+                Games: overallByMatch.Count,
+                Xp: overallByMatch.Sum(x => x.Xp),
+                DamageGiven: overallByMatch.Sum(x => x.DamageGiven),
+                DamageReceived: overallByMatch.Sum(x => x.DamageReceived),
+                TeamDamageGiven: overallByMatch.Sum(x => x.TeamDamageGiven),
+                TeamDamageReceived: overallByMatch.Sum(x => x.TeamDamageReceived),
+                Gibs: overallByMatch.Sum(x => x.Gibs),
+                SelfKills: overallByMatch.Sum(x => x.SelfKills),
+                TeamKills: overallByMatch.Sum(x => x.TeamKills),
+                TeamGibs: overallByMatch.Sum(x => x.TeamGibs),
+                Kills: totalKills,
+                Deaths: totalDeaths,
+                Kdr: kdr,
+                Headshots: totalHeadshots,
+                Revives: totalRevives);
+
+            // Match list (prefer round 2 info, fall back to round 1).
+            var matchesById = await db.Matches
+                .AsNoTracking()
+                .Where(m => matchIdsAny.Contains(m.Id))
+                .Select(m => new { m.Id, m.MapName, m.ServerName })
+                .ToDictionaryAsync(x => x.Id);
+
+            var rounds = await db.MatchRounds
+                .AsNoTracking()
+                .Where(r => matchIdsAny.Contains(r.MatchId) && (r.RoundNumber == 1 || r.RoundNumber == 2))
+                .Select(r => new { r.MatchId, r.RoundNumber, r.IngestedAtUtc, r.NextTimeLimit })
+                .ToListAsync();
+
+            var roundsByMatch = rounds
+                .GroupBy(r => r.MatchId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => new
+                    {
+                        Round1 = g.FirstOrDefault(x => x.RoundNumber == 1),
+                        Round2 = g.FirstOrDefault(x => x.RoundNumber == 2),
+                    });
+
+            var matchRows = new List<MatchRow>(matchIdsAny.Count);
+            foreach (var matchId in matchIdsAny)
+            {
+                if (!matchesById.TryGetValue(matchId, out var mi))
+                {
+                    continue;
+                }
+
+                roundsByMatch.TryGetValue(matchId, out var ri);
+                var r1 = ri?.Round1;
+                var r2 = ri?.Round2;
+
+                var ingestedAt = (r2?.IngestedAtUtc ?? r1?.IngestedAtUtc) ?? DateTime.MinValue;
+                var timeText = $"{(r1?.NextTimeLimit ?? "-")} / {(r2?.NextTimeLimit ?? "-")}";
+
+                matchRows.Add(new MatchRow(matchId, ingestedAt, mi.MapName, mi.ServerName, timeText));
+            }
+
+            matchRows = matchRows
+                .OrderByDescending(m => m.IngestedAtUtc)
+                .ToList();
+
+            _vm = new ViewModel
+            {
+                PlayerGuid = playerGuid,
+                DisplayName = displayName,
+                Nicknames = nicknames,
+                Aggregate = agg,
+                WeaponStats = weaponStatsAllRounds,
+                Matches = matchRows,
+            };
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+        }
+    }
+
+    private static double AccuracyPct(int hits, int atts) => atts <= 0 ? 0 : 100.0 * hits / atts;
+
+    private static readonly IReadOnlyDictionary<int, string> WeaponNames = new Dictionary<int, string>
+    {
+        [0] = "Knife",
+        [1] = "Ka-Bar",
+        [2] = "Luger",
+        [3] = "Colt",
+        [4] = "MP 40",
+        [5] = "Thompson",
+        [6] = "Sten",
+        [7] = "FG 42",
+        [8] = "Panzer",
+        [9] = "Bazooka",
+        [10] = "F.Thrower",
+        [11] = "Grenade",
+        [12] = "Mortar",
+        [13] = "Granatwerf",
+        [14] = "Dynamite",
+        [15] = "Airstrike",
+        [16] = "Artillery",
+        [17] = "Satchel",
+        [18] = "Gren.Launcher",
+        [19] = "Landmine",
+        [20] = "MG 42",
+        [21] = "Browning",
+        [22] = "Carbine",
+        [23] = "K43 Rifle",
+        [24] = "Garand",
+        [25] = "K43",
+        [26] = "MP 34",
+        [27] = "Syringe",
+    };
+
+    private static string WeaponName(int weaponId)
+        => WeaponNames.TryGetValue(weaponId, out var name) ? name : weaponId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}
