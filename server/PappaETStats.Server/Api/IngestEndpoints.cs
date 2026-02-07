@@ -310,6 +310,7 @@ public static class IngestEndpoints
         // ET can keep some sess.* values across map_restart, which makes round 2 partially aggregated.
         // We detect cumulatives by comparing against ingested round 1 values for the same GUID.
         Dictionary<string, Round1PlayerSnapshot> round1ByGuid = new(StringComparer.OrdinalIgnoreCase);
+        MatchRound? round1ForWinner = null;
         if (dto.Round == 2 && !isNewMatch)
         {
             var round1 = await db.MatchRounds
@@ -318,6 +319,8 @@ public static class IngestEndpoints
                     .ThenInclude(s => s.Players)
                         .ThenInclude(p => p.WeaponStats)
                 .FirstOrDefaultAsync(r => r.MatchId == match.Id && r.RoundNumber == 1, cancellationToken);
+
+            round1ForWinner = round1;
 
             if (round1 is not null)
             {
@@ -404,6 +407,13 @@ public static class IngestEndpoints
             IngestedAtUtc = DateTime.UtcNow,
             RawJson = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = false })
         };
+
+        // Persist overall match winner once round 2 is ingested.
+        // Keep it null for matches without round 2.
+        if (dto.Round == 2)
+        {
+            match.Winner = MatchWinnerCalculator.DetermineWinner(round1ForWinner, round);
+        }
 
         foreach (var teamGroup in groupedByTeam)
         {

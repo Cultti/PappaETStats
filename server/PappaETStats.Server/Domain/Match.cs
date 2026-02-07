@@ -24,5 +24,7 @@ public sealed class Match
     [MaxLength(16)]
     public required string ServerPort { get; set; }
 
+    public MatchWinner? Winner { get; set; }
+
     public List<MatchRound> Rounds { get; set; } = new();
 }
