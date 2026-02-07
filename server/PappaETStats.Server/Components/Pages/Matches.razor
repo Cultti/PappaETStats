@@ -21,27 +21,14 @@ else if (_rows.Count == 0)
 }
 else
 {
-    <MudTable Items="_rows"
-              Dense="true"
-              Hover="true"
-              Striped="true"
-              Breakpoint="Breakpoint.Sm"
-              Elevation="0">
-        <HeaderContent>
-            <MudTh>Round 1 start (Helsinki)</MudTh>
-            <MudTh>Map</MudTh>
-            <MudTh>Time</MudTh>
-            <MudTh>Server</MudTh>
-        </HeaderContent>
-        <RowTemplate Context="row">
-            <MudTd DataLabel="Round 1 start (Helsinki)">
-                <MudLink Href="@($"/matches/{row.MatchId}")" Underline="Underline.Always">@FormatHelsinkiFromUnixSeconds(row.Round1StartUnix)</MudLink>
-            </MudTd>
-            <MudTd DataLabel="Map">@(row.MapName ?? "-")</MudTd>
-            <MudTd DataLabel="Time">@row.Round1NextTimeLimit / @row.Round2NextTimeLimit</MudTd>
-            <MudTd DataLabel="Server"><EtColoredText Text="@(row.ServerName ?? string.Empty)" /></MudTd>
-        </RowTemplate>
-    </MudTable>
+    <MatchListTable Items="_rows"
+                    GetMatchId="@(r => r.MatchId)"
+                    GetRound1StartUnix="@(r => r.Round1StartUnix)"
+                    GetMapName="@(r => r.MapName)"
+                    GetServerName="@(r => r.ServerName)"
+                    GetTeam1PlayerCount="@(r => r.Team1PlayerCount)"
+                    GetTeam2PlayerCount="@(r => r.Team2PlayerCount)"
+                    GetTimeText="@(r => $"{(r.Round1NextTimeLimit ?? "-")} / {(r.Round2NextTimeLimit ?? "-")}")" />
 }
 
 @code {
@@ -53,6 +40,8 @@ else
         DateTime IngestedAtUtc,
         string? MapName,
         string? ServerName,
+        int? Team1PlayerCount,
+        int? Team2PlayerCount,
         string? Round2NextTimeLimit,
         int Round2WinnerTeam,
         string? Round1TimeLimit,
@@ -69,6 +58,10 @@ else
             from r2 in db.MatchRounds.AsNoTracking()
             where r2.RoundNumber == 2
             join m in db.Matches.AsNoTracking() on r2.MatchId equals m.Id
+            join s1j in db.MatchSides.AsNoTracking().Where(x => x.Team == 1) on r2.Id equals s1j.MatchRoundId into s1g
+            from s1 in s1g.DefaultIfEmpty()
+            join s2j in db.MatchSides.AsNoTracking().Where(x => x.Team == 2) on r2.Id equals s2j.MatchRoundId into s2g
+            from s2 in s2g.DefaultIfEmpty()
             join r1 in db.MatchRounds.AsNoTracking().Where(x => x.RoundNumber == 1)
                 on r2.MatchId equals r1.MatchId into r1g
             from r1 in r1g.DefaultIfEmpty()
@@ -79,6 +72,8 @@ else
                 r2.IngestedAtUtc,
                 m.MapName,
                 m.ServerName,
+                s1 != null ? s1.PlayerCount : (int?)null,
+                s2 != null ? s2.PlayerCount : (int?)null,
                 r2.NextTimeLimit,
                 r2.WinnerTeam,
                 r1 != null ? r1.TimeLimit : null,
@@ -87,41 +82,6 @@ else
         )
         .Take(50)
         .ToListAsync();
-    }
-
-    private static readonly TimeZoneInfo HelsinkiTimeZone = ResolveHelsinkiTimeZone();
-
-    private static string FormatHelsinkiFromUnixSeconds(long? unixSeconds)
-    {
-        if (unixSeconds is null or <= 0)
-        {
-            return "-";
-        }
-
-        var utc = DateTimeOffset.FromUnixTimeSeconds(unixSeconds.Value);
-        var helsinki = TimeZoneInfo.ConvertTime(utc, HelsinkiTimeZone);
-        return helsinki.ToString("yyyy-MM-dd HH:mm:ss");
-    }
-
-    private static TimeZoneInfo ResolveHelsinkiTimeZone()
-    {
-        // Linux/macOS typically use IANA, Windows uses Windows time zone IDs.
-        // Support both so local dev and Docker/Linux hosting behave the same.
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById("Europe/Helsinki");
-        }
-        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
-        {
-            try
-            {
-                return TimeZoneInfo.FindSystemTimeZoneById("FLE Standard Time");
-            }
-            catch (Exception ex2) when (ex2 is TimeZoneNotFoundException or InvalidTimeZoneException)
-            {
-                return TimeZoneInfo.Utc;
-            }
-        }
     }
 
     private static string MatchResultText(Round2Row round2)

@@ -1,0 +1,140 @@
+@using MudBlazor
+@typeparam TItem
+
+<MudTable T="TItem"
+          Items="Items"
+          Dense="Dense"
+          Hover="Hover"
+          Striped="Striped"
+          Breakpoint="Breakpoint"
+          Elevation="Elevation"
+          RowsPerPage="RowsPerPage">
+    <HeaderContent>
+        <MudTh>Start time</MudTh>
+        <MudTh>Map</MudTh>
+        @if (ShowTeams)
+        {
+            <MudTh>Teams</MudTh>
+        }
+        <MudTh>Time</MudTh>
+        <MudTh>Server</MudTh>
+    </HeaderContent>
+    <RowTemplate Context="row">
+        <MudTd DataLabel="Start time">
+            <MudLink Href="@($"/matches/{GetMatchId(row)}")" Underline="Underline.Always">@FormatHelsinkiFromUnixSeconds(GetRound1StartUnix?.Invoke(row))</MudLink>
+        </MudTd>
+        <MudTd DataLabel="Map">@(GetMapName?.Invoke(row) ?? "-")</MudTd>
+        @if (ShowTeams)
+        {
+            <MudTd DataLabel="Teams">@FormatTeamSizes(GetTeam1PlayerCount?.Invoke(row), GetTeam2PlayerCount?.Invoke(row))</MudTd>
+        }
+        <MudTd DataLabel="Time">@(GetTimeText?.Invoke(row) ?? "-")</MudTd>
+        <MudTd DataLabel="Server"><EtColoredText Text="@(GetServerName?.Invoke(row) ?? string.Empty)" /></MudTd>
+    </RowTemplate>
+
+    <PagerContent>
+        @if (ShowPager)
+        {
+            <MudTablePager PageSizeOptions="PageSizeOptions" />
+        }
+    </PagerContent>
+</MudTable>
+
+@code {
+    [Parameter]
+    public IEnumerable<TItem> Items { get; set; } = Array.Empty<TItem>();
+
+    [Parameter, EditorRequired]
+    public Func<TItem, Guid> GetMatchId { get; set; } = default!;
+
+    [Parameter]
+    public Func<TItem, long?>? GetRound1StartUnix { get; set; }
+
+    [Parameter]
+    public Func<TItem, string?>? GetMapName { get; set; }
+
+    [Parameter]
+    public Func<TItem, string?>? GetServerName { get; set; }
+
+    [Parameter]
+    public Func<TItem, int?>? GetTeam1PlayerCount { get; set; }
+
+    [Parameter]
+    public Func<TItem, int?>? GetTeam2PlayerCount { get; set; }
+
+    [Parameter]
+    public Func<TItem, string?>? GetTimeText { get; set; }
+
+    [Parameter]
+    public bool Dense { get; set; } = true;
+
+    [Parameter]
+    public bool Hover { get; set; } = true;
+
+    [Parameter]
+    public bool Striped { get; set; } = true;
+
+    [Parameter]
+    public Breakpoint Breakpoint { get; set; } = Breakpoint.Sm;
+
+    [Parameter]
+    public int Elevation { get; set; } = 0;
+
+    [Parameter]
+    public bool ShowTeams { get; set; } = true;
+
+    [Parameter]
+    public bool ShowPager { get; set; } = true;
+
+    [Parameter]
+    public int RowsPerPage { get; set; } = 25;
+
+    [Parameter]
+    public int[] PageSizeOptions { get; set; } = [10, 25, 50, 100];
+
+    private static string FormatTeamSizes(int? team1PlayerCount, int? team2PlayerCount)
+    {
+        if (team1PlayerCount is null or <= 0 || team2PlayerCount is null or <= 0)
+        {
+            return "-";
+        }
+
+        return $"{team1PlayerCount}v{team2PlayerCount}";
+    }
+
+    private static readonly TimeZoneInfo HelsinkiTimeZone = ResolveHelsinkiTimeZone();
+
+    private static string FormatHelsinkiFromUnixSeconds(long? unixSeconds)
+    {
+        if (unixSeconds is null or <= 0)
+        {
+            return "-";
+        }
+
+        var utc = DateTimeOffset.FromUnixTimeSeconds(unixSeconds.Value);
+        var helsinki = TimeZoneInfo.ConvertTime(utc, HelsinkiTimeZone);
+        // Finnish-style date/time like: 28.2.2026 22:14
+        return helsinki.ToString("d.M.yyyy HH:mm");
+    }
+
+    private static TimeZoneInfo ResolveHelsinkiTimeZone()
+    {
+        // Linux/macOS typically use IANA, Windows uses Windows time zone IDs.
+        // Support both so local dev and Docker/Linux hosting behave the same.
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("Europe/Helsinki");
+        }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById("FLE Standard Time");
+            }
+            catch (Exception ex2) when (ex2 is TimeZoneNotFoundException or InvalidTimeZoneException)
+            {
+                return TimeZoneInfo.Utc;
+            }
+        }
+    }
+}

@@ -3,6 +3,7 @@
 @using Microsoft.EntityFrameworkCore
 @using PappaETStats.Server.Data
 @using PappaETStats.Server.Domain
+@using PappaETStats.Server.Components.Shared
 @inject IDbContextFactory<StatsDbContext> DbFactory
 
 <PageTitle>Player</PageTitle>
@@ -150,22 +151,14 @@ else
         }
         else
         {
-            <MudTable Items="_vm.Matches" Dense="true" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm" Elevation="0">
-                <HeaderContent>
-                    <MudTh>Ingested</MudTh>
-                    <MudTh>Map</MudTh>
-                    <MudTh>Time</MudTh>
-                    <MudTh>Server</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Ingested">
-                        <MudLink Href="@($"/matches/{context.MatchId}")" Underline="Underline.Always">@context.IngestedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudLink>
-                    </MudTd>
-                    <MudTd DataLabel="Map">@(context.MapName ?? "-")</MudTd>
-                    <MudTd DataLabel="Time">@context.TimeText</MudTd>
-                    <MudTd DataLabel="Server"><EtColoredText Text="@(context.ServerName ?? string.Empty)" /></MudTd>
-                </RowTemplate>
-            </MudTable>
+            <MatchListTable Items="_vm.Matches"
+                            GetMatchId="@(m => m.MatchId)"
+                            GetRound1StartUnix="@(m => m.Round1StartUnix)"
+                            GetMapName="@(m => m.MapName)"
+                            GetServerName="@(m => m.ServerName)"
+                            GetTeam1PlayerCount="@(m => m.Team1PlayerCount)"
+                            GetTeam2PlayerCount="@(m => m.Team2PlayerCount)"
+                            GetTimeText="@(m => m.TimeText)" />
         }
     </MudPaper>
 }
@@ -177,7 +170,15 @@ else
     private string? _loadError;
     private ViewModel? _vm;
 
-    private sealed record MatchRow(Guid MatchId, DateTime IngestedAtUtc, string? MapName, string? ServerName, string TimeText);
+    private sealed record MatchRow(
+        Guid MatchId,
+        long? Round1StartUnix,
+        DateTime IngestedAtUtc,
+        string? MapName,
+        string? ServerName,
+        int? Team1PlayerCount,
+        int? Team2PlayerCount,
+        string TimeText);
 
     private sealed record PlayerAggregate(
         int Games,
@@ -453,8 +454,25 @@ else
             var rounds = await db.MatchRounds
                 .AsNoTracking()
                 .Where(r => matchIdsAny.Contains(r.MatchId) && (r.RoundNumber == 1 || r.RoundNumber == 2))
-                .Select(r => new { r.MatchId, r.RoundNumber, r.IngestedAtUtc, r.NextTimeLimit })
+                .Select(r => new { r.Id, r.MatchId, r.RoundNumber, r.IngestedAtUtc, r.NextTimeLimit, r.RoundStartUnix })
                 .ToListAsync();
+
+            var roundIds = rounds.Select(r => r.Id).Distinct().ToList();
+            var sides = await db.MatchSides
+                .AsNoTracking()
+                .Where(s => roundIds.Contains(s.MatchRoundId))
+                .Select(s => new { s.MatchRoundId, s.Team, s.PlayerCount })
+                .ToListAsync();
+
+            var sideCountsByRoundId = sides
+                .GroupBy(s => s.MatchRoundId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => new
+                    {
+                        Team1 = (int?)g.Where(x => x.Team == 1).Select(x => x.PlayerCount).FirstOrDefault(),
+                        Team2 = (int?)g.Where(x => x.Team == 2).Select(x => x.PlayerCount).FirstOrDefault(),
+                    });
 
             var roundsByMatch = rounds
                 .GroupBy(r => r.MatchId)
@@ -478,14 +496,21 @@ else
                 var r1 = ri?.Round1;
                 var r2 = ri?.Round2;
 
+                var round1StartUnix = r1 is null ? (long?)null : r1.RoundStartUnix;
                 var ingestedAt = (r2?.IngestedAtUtc ?? r1?.IngestedAtUtc) ?? DateTime.MinValue;
                 var timeText = $"{(r1?.NextTimeLimit ?? "-")} / {(r2?.NextTimeLimit ?? "-")}";
 
-                matchRows.Add(new MatchRow(matchId, ingestedAt, mi.MapName, mi.ServerName, timeText));
+                var teamsFromRoundId = (r2?.Id ?? r1?.Id) ?? Guid.Empty;
+                sideCountsByRoundId.TryGetValue(teamsFromRoundId, out var teamCounts);
+                var team1Count = teamCounts?.Team1;
+                var team2Count = teamCounts?.Team2;
+
+                matchRows.Add(new MatchRow(matchId, round1StartUnix, ingestedAt, mi.MapName, mi.ServerName, team1Count, team2Count, timeText));
             }
 
             matchRows = matchRows
-                .OrderByDescending(m => m.IngestedAtUtc)
+                .OrderByDescending(m => m.Round1StartUnix ?? 0)
+                .ThenByDescending(m => m.IngestedAtUtc)
                 .ToList();
 
             _vm = new ViewModel
