@@ -34,4 +34,6 @@ public sealed class MatchPlayer
     public int TeamGibs { get; set; }
 
     public List<MatchPlayerWeaponStat> WeaponStats { get; set; } = new();
+
+    public List<MatchPlayerClassStat> ClassStats { get; set; } = new();
 }

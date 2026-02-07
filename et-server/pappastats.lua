@@ -49,6 +49,12 @@ local round_end_time = 0
 local round_end_unix = 0
 local obituaries = {}
 
+-- Per-player class time tracking.
+-- Totals are stored as classStats[guid][classId] = milliseconds.
+-- Current in-flight segment is tracked in classState[guid].
+local classStats = {}
+local classState = {}
+
 -- Current match id (shared across round 1 + round 2). Preserved across map_restart.
 local current_match_id = nil
 
@@ -58,6 +64,115 @@ local current_match_id = nil
 
 local function log(message)
     et.G_Print(string.format("^2[%s]^7 %s\n", modname, tostring(message)))
+end
+
+local function guid_for_client(clientNum)
+    if type(clientNum) ~= "number" or clientNum < 0 or clientNum >= maxClients then
+        return ""
+    end
+
+    local userinfo = trap_GetUserinfo(clientNum)
+    if not userinfo or userinfo == "" then
+        return ""
+    end
+
+    return string.upper(Info_ValueForKey(userinfo, "cl_guid") or "")
+end
+
+local function classstats_add_time(guid, classId, deltaMs)
+    if not guid or guid == "" then
+        return
+    end
+
+    local cls = tonumber(classId)
+    if cls == nil then
+        return
+    end
+
+    local ms = tonumber(deltaMs) or 0
+    if ms <= 0 then
+        return
+    end
+
+    if not classStats[guid] then
+        classStats[guid] = {}
+    end
+
+    classStats[guid][cls] = (classStats[guid][cls] or 0) + ms
+end
+
+local function classstats_rollover(guid, nowMs, newClassId)
+    if not guid or guid == "" then
+        return
+    end
+
+    local state = classState[guid]
+    if state and state.classId ~= nil and state.startMs and state.startMs > 0 then
+        local elapsed = (tonumber(nowMs) or 0) - state.startMs
+        if elapsed > 0 then
+            classstats_add_time(guid, state.classId, elapsed)
+        end
+    end
+
+    classState[guid] = {
+        classId = tonumber(newClassId) or 0,
+        startMs = tonumber(nowMs) or trap_Milliseconds()
+    }
+end
+
+local function classstats_finalize(guid, nowMs)
+    if not guid or guid == "" then
+        return
+    end
+
+    local state = classState[guid]
+    if state and state.classId ~= nil and state.startMs and state.startMs > 0 then
+        local elapsed = (tonumber(nowMs) or 0) - state.startMs
+        if elapsed > 0 then
+            classstats_add_time(guid, state.classId, elapsed)
+        end
+    end
+
+    classState[guid] = nil
+end
+
+local function classstats_snapshot(guid, nowMs)
+    -- Build a stable, JSON-friendly structure:
+    --   [ { classId = <number>, ms = <number> }, ... ]
+    -- (keeps internal storage as classStats[guid][classId] = ms)
+    local totalsMs = {}
+
+    local totals = classStats[guid]
+    if totals then
+        for classId, ms in pairs(totals) do
+            totalsMs[tonumber(classId) or 0] = tonumber(ms) or 0
+        end
+    end
+
+    local state = classState[guid]
+    if state and state.classId ~= nil and state.startMs and state.startMs > 0 then
+        local elapsed = (tonumber(nowMs) or 0) - state.startMs
+        if elapsed > 0 then
+            local cls = tonumber(state.classId) or 0
+            totalsMs[cls] = (totalsMs[cls] or 0) + elapsed
+        end
+    end
+
+    local classIds = {}
+    for classId, ms in pairs(totalsMs) do
+        if (tonumber(ms) or 0) > 0 then
+            table_insert(classIds, classId)
+        end
+    end
+
+    table.sort(classIds)
+
+    local snapshot = {}
+    for _, classId in ipairs(classIds) do
+        table_insert(snapshot, { classId = classId, ms = totalsMs[classId] })
+    end
+
+    return snapshot
 end
 
 local function fs_file_exists(path)
@@ -408,6 +523,8 @@ end
 local function gather_player_stats()
     local players = {}
 
+    local nowMs = trap_Milliseconds()
+
     for clientNum in pairs(connectedClients) do
         if gentity_get(clientNum, "pers.connected") == CON_CONNECTED then
             local userinfo = trap_GetUserinfo(clientNum)
@@ -462,12 +579,15 @@ local function gather_player_stats()
                         local totalTeamTime = timeAxis + timeAllies
                         local timePlayedPercent = (totalTeamTime == 0) and 0 or (100.0 * timePlayed / totalTeamTime)
 
+                        local classStatsForGuid = classstats_snapshot(guid, nowMs)
+
                         table_insert(players, {
                             clientNum = clientNum,
                             guid = guid,
                             name = name,
                             rounds = rounds,
                             team = team,
+                            class_stats = classStatsForGuid,
                             weapon_stats = weaponStats,
                             damage_given = damageGiven,
                             damage_received = damageReceived,
@@ -591,6 +711,8 @@ function et_InitGame(levelTime, randomSeed, restart)
     if tonumber(restart) == 0 then
         current_match_id = nil
         obituaries = {}
+        classStats = {}
+        classState = {}
     end
 
     initMaxClients()
@@ -615,25 +737,24 @@ function et_ClientBegin(clientNum)
 end
 
 function et_ClientDisconnect(clientNum)
+    local guid = guid_for_client(clientNum)
+    if guid ~= "" then
+        classstats_finalize(guid, trap_Milliseconds())
+    end
     remove_connected_client(clientNum)
 end
 
-function et_Obituary(target, attacker, meansOfDeath)
-    local victimRespawnTime = 0
-    local attackerRespawnTime = 0
-
-    local function guid_for_client(clientNum)
-        if type(clientNum) ~= "number" or clientNum < 0 or clientNum >= maxClients then
-            return ""
-        end
-
-        local userinfo = trap_GetUserinfo(clientNum)
-        if not userinfo or userinfo == "" then
-            return ""
-        end
-
-        return string.upper(Info_ValueForKey(userinfo, "cl_guid") or "")
+function et_ClientSpawn(clientNum, revived, teamChange, restoreHealth)
+    local guid = guid_for_client(clientNum)
+    if guid == "" then
+        return
     end
+
+    local classId = safe_number(gentity_get(clientNum, "sess.playerType"))
+    classstats_rollover(guid, trap_Milliseconds(), classId)
+end
+
+function et_Obituary(target, attacker, meansOfDeath)
 
     local targetGuid = guid_for_client(target)
     local attackerGuid = (attacker == 1022) and "WORLD" or guid_for_client(attacker)
@@ -642,8 +763,6 @@ function et_Obituary(target, attacker, meansOfDeath)
         timestamp = trap_Milliseconds(),
         target = targetGuid,
         attacker = attackerGuid,
-        meansOfDeath = meansOfDeath,
-        attackerRespawnTime = attackerRespawnTime,
-        victimRespawnTime = victimRespawnTime
+        meansOfDeath = meansOfDeath
     })
 end

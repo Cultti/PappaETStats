@@ -118,3 +118,4 @@ PublishProfiles/
 # Project specific
 et-server/reference/
 output/
+server/PappaETStats.Server/App_Data/

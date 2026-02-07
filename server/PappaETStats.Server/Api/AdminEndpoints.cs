@@ -61,6 +61,10 @@ public static class AdminEndpoints
                     .ThenInclude(s => s.Players)
                         .ThenInclude(p => p.WeaponStats)
             .Include(m => m.Rounds)
+                .ThenInclude(r => r.Sides)
+                    .ThenInclude(s => s.Players)
+                        .ThenInclude(p => p.ClassStats)
+            .Include(m => m.Rounds)
                 .ThenInclude(r => r.Obituaries)
             .FirstOrDefaultAsync(m => m.Id == matchId, cancellationToken);
 

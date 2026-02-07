@@ -169,6 +169,14 @@ else
                             Deaths = ws.Deaths,
                             Headshots = ws.Headshots,
                         }).ToList(),
+                        ClassStats = p.ClassStats.Select(cs => new MatchPlayerClassStat
+                        {
+                            Id = cs.Id,
+                            MatchPlayerId = cs.MatchPlayerId,
+                            MatchPlayer = null!,
+                            ClassId = cs.ClassId,
+                            Ms = cs.Ms,
+                        }).ToList(),
                     }).ToList(),
                 }).ToList(),
                 Obituaries = r.Obituaries.Select(o => new MatchObituary
@@ -792,17 +800,68 @@ else
             }
 
             <MudCard Elevation="0" Class="mt-2" Style="border:1px solid var(--mud-palette-lines-default)">
-                <MudCardHeader>
-                    <CardHeaderContent>
-                        <MudText Typo="Typo.body1">Weapon stats for <strong><EtColoredText Text="@context.Item.Name" /></strong></MudText>
-                    </CardHeaderContent>
-                </MudCardHeader>
                 <MudCardContent Class="pa-0">
-                    <MudStack Spacing="0" Class="pa-4">
-                        <MudText Typo="Typo.body2"><strong>Team kills:</strong> @context.Item.TeamKills</MudText>
-                        <MudText Typo="Typo.body2"><strong>Team dmg given:</strong> @context.Item.TeamDamageGiven</MudText>
-                        <MudText Typo="Typo.body2"><strong>Team dmg received:</strong> @context.Item.TeamDamageReceived</MudText>
-                    </MudStack>
+                    <MudGrid Class="pa-4" Spacing="2">
+                        <MudItem xs="12" md="6">
+                            <MudSimpleTable Dense="true" Style="width:100%">
+                                <colgroup>
+                                    <col />
+                                    <col style="width:8ch;" />
+                                </colgroup>
+                                <tbody>
+                                    <tr>
+                                        <td>Teamkills</td>
+                                        <td style="text-align:right;">@context.Item.TeamKills</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Team Dmg Given</td>
+                                        <td style="text-align:right;">@context.Item.TeamDamageGiven</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Team Dmg Received</td>
+                                        <td style="text-align:right;">@context.Item.TeamDamageReceived</td>
+                                    </tr>
+                                </tbody>
+                            </MudSimpleTable>
+                        </MudItem>
+
+                        <MudItem xs="12" md="6">
+                            @{
+                                var classRows = context.Item.ClassStats
+                                    .Where(cs => cs.Ms > 0)
+                                    .OrderBy(cs => cs.ClassId)
+                                    .Select(cs => new
+                                    {
+                                        Name = ClassName(cs.ClassId),
+                                        Time = FormatDurationMs(cs.Ms)
+                                    })
+                                    .ToList();
+                            }
+
+                            @if (classRows.Count == 0)
+                            {
+                                <MudText Typo="Typo.body2">-</MudText>
+                            }
+                            else
+                            {
+                                <MudSimpleTable Dense="true" Style="width:100%">
+                                    <colgroup>
+                                        <col />
+                                        <col style="width:6ch;" />
+                                    </colgroup>
+                                    <tbody>
+                                        @foreach (var row in classRows)
+                                        {
+                                            <tr>
+                                                <td>@row.Name</td>
+                                                <td style="text-align:right;">@row.Time</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </MudSimpleTable>
+                            }
+                        </MudItem>
+                    </MudGrid>
 
                     @if (weaponStats.Count == 0)
                     {
@@ -844,6 +903,32 @@ else
 
     private sealed record WeaponStatView(int Weapon, int Hits, int Atts, int Kills, int Deaths, int Headshots);
 
+    private static string ClassName(int classId) => classId switch
+    {
+        0 => "Soldier",
+        1 => "Medic",
+        2 => "Engineer",
+        3 => "Fieldop",
+        4 => "Covert",
+        _ => $"Class {classId}",
+    };
+
+    private static string FormatDurationMs(long ms)
+    {
+        if (ms <= 0)
+        {
+            return "0:00";
+        }
+
+        var ts = TimeSpan.FromMilliseconds(ms);
+        if (ts.TotalHours >= 1)
+        {
+            return $"{(int)ts.TotalHours}:{ts.Minutes:00}:{ts.Seconds:00}";
+        }
+
+        return $"{(int)ts.TotalMinutes}:{ts.Seconds:00}";
+    }
+
     private sealed class OverallSideView
     {
         public required int OverallTeamId { get; init; }
@@ -869,6 +954,8 @@ else
         public int TeamGibs { get; set; }
 
         public Dictionary<int, MatchPlayerWeaponStat> WeaponStatsByWeapon { get; } = new();
+
+        public Dictionary<int, long> ClassMsByClassId { get; } = new();
     }
 
     private static IReadOnlyList<OverallSideView> BuildOverallSidesFromRounds(MatchRound? round1, MatchRound round2)
@@ -957,6 +1044,17 @@ else
                     existing.Deaths += ws.Deaths;
                     existing.Headshots += ws.Headshots;
                 }
+
+                foreach (var cs in p.ClassStats)
+                {
+                    if (cs.Ms <= 0)
+                    {
+                        continue;
+                    }
+
+                    var existing = acc.ClassMsByClassId.TryGetValue(cs.ClassId, out var ms) ? ms : 0;
+                    acc.ClassMsByClassId[cs.ClassId] = existing + cs.Ms;
+                }
             }
         }
 
@@ -975,6 +1073,19 @@ else
                     return ws;
                 })
                 .OrderBy(ws => ws.Weapon)
+                .ToList();
+
+            var classStats = acc.ClassMsByClassId
+                .Where(kv => kv.Value > 0)
+                .OrderBy(kv => kv.Key)
+                .Select(kv => new MatchPlayerClassStat
+                {
+                    Id = Guid.Empty,
+                    MatchPlayerId = acc.Id,
+                    MatchPlayer = null!,
+                    ClassId = kv.Key,
+                    Ms = kv.Value,
+                })
                 .ToList();
 
             return new MatchPlayer
@@ -998,6 +1109,7 @@ else
                 TeamKills = acc.TeamKills,
                 TeamGibs = acc.TeamGibs,
                 WeaponStats = weaponStats,
+                ClassStats = classStats,
             };
         }
 

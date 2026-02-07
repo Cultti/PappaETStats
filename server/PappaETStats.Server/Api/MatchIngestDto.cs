@@ -103,8 +103,20 @@ public sealed class PlayerDto
     [JsonPropertyName("weapon_stats")]
     public List<WeaponStatDto>? WeaponStats { get; init; }
 
+    [JsonPropertyName("class_stats")]
+    public List<ClassStatDto>? ClassStats { get; init; }
+
     [JsonPropertyName("name")]
     public string? Name { get; init; }
+}
+
+public sealed class ClassStatDto
+{
+    [JsonPropertyName("classId")]
+    public int ClassId { get; init; }
+
+    [JsonPropertyName("ms")]
+    public long Ms { get; init; }
 }
 
 public sealed class WeaponStatDto

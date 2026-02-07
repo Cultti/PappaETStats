@@ -294,6 +294,9 @@ public static class IngestEndpoints
             .Include(r => r.Sides)
                 .ThenInclude(s => s.Players)
                     .ThenInclude(p => p.WeaponStats)
+            .Include(r => r.Sides)
+                .ThenInclude(s => s.Players)
+                    .ThenInclude(p => p.ClassStats)
             .Include(r => r.Obituaries)
             .FirstOrDefaultAsync(r => r.MatchId == match.Id && r.RoundNumber == dto.Round, cancellationToken);
 
@@ -467,6 +470,21 @@ public static class IngestEndpoints
                         Kills = r1Weapon is null ? w.Kills : Math.Max(0, w.Kills - r1Weapon.Kills),
                         Deaths = r1Weapon is null ? w.Deaths : Math.Max(0, w.Deaths - r1Weapon.Deaths),
                         Headshots = r1Weapon is null ? w.Headshots : Math.Max(0, w.Headshots - r1Weapon.Headshots)
+                    });
+                }
+
+                foreach (var c in p.ClassStats ?? [])
+                {
+                    if (c.Ms <= 0)
+                    {
+                        continue;
+                    }
+
+                    player.ClassStats.Add(new MatchPlayerClassStat
+                    {
+                        Id = Guid.NewGuid(),
+                        ClassId = c.ClassId,
+                        Ms = c.Ms
                     });
                 }
 

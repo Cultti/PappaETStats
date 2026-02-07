@@ -10,6 +10,7 @@ public sealed class StatsDbContext(DbContextOptions<StatsDbContext> options) : D
     public DbSet<MatchSide> MatchSides => Set<MatchSide>();
     public DbSet<MatchPlayer> MatchPlayers => Set<MatchPlayer>();
     public DbSet<MatchPlayerWeaponStat> MatchPlayerWeaponStats => Set<MatchPlayerWeaponStat>();
+    public DbSet<MatchPlayerClassStat> MatchPlayerClassStats => Set<MatchPlayerClassStat>();
     public DbSet<MatchObituary> MatchObituaries => Set<MatchObituary>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -50,6 +51,12 @@ public sealed class StatsDbContext(DbContextOptions<StatsDbContext> options) : D
             .HasMany(p => p.WeaponStats)
             .WithOne(w => w.MatchPlayer)
             .HasForeignKey(w => w.MatchPlayerId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<MatchPlayer>()
+            .HasMany(p => p.ClassStats)
+            .WithOne(c => c.MatchPlayer)
+            .HasForeignKey(c => c.MatchPlayerId)
             .OnDelete(DeleteBehavior.Cascade);
 
         base.OnModelCreating(modelBuilder);
