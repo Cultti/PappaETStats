@@ -49,6 +49,12 @@ local round_end_time = 0
 local round_end_unix = 0
 local obituaries = {}
 
+-- Delay sending stats after intermission to ensure ET has finalized round stats.
+local SEND_DELAY_MS = 5000
+local pending_send = false
+local pending_send_at_ms = 0
+local pending_send_token = nil
+
 -- Per-player class time tracking.
 -- Totals are stored as classStats[guid][classId] = milliseconds.
 -- Current in-flight segment is tracked in classState[guid].
@@ -480,14 +486,34 @@ local function handle_gamestate_change()
     if newGamestate == et.GS_PLAYING then -- Game has started
         round_start_time = trap_Milliseconds()
         round_start_unix = os.time()    
+        -- New round started; cancel any pending send from a previous intermission.
+        pending_send = false
     elseif newGamestate == et.GS_INTERMISSION then -- Game has ended
         round_end_time = trap_Milliseconds()
         round_end_unix = os.time()
 
-        SendStats("1234567890")  -- Temporary hardcoded token for testing
+        -- Schedule sending stats a few seconds after intermission starts.
+        -- (et_RunFrame will perform the actual send once.)
+        pending_send_token = "1234567890" -- Temporary hardcoded token for testing
+        pending_send_at_ms = round_end_time + SEND_DELAY_MS
+        pending_send = true
     end
 
     currentGameState = newGamestate
+end
+
+local function process_pending_send()
+    if not pending_send then
+        return
+    end
+
+    local now = trap_Milliseconds()
+    if now < (pending_send_at_ms or 0) then
+        return
+    end
+
+    pending_send = false
+    SendStats(pending_send_token)
 end
 
 -- ---------------------------------------------------------------------------
@@ -702,6 +728,7 @@ end
 
 function et_RunFrame(gameFrameLevelTime)
     handle_gamestate_change()
+    process_pending_send()
 end
 
 function et_InitGame(levelTime, randomSeed, restart)
@@ -714,6 +741,10 @@ function et_InitGame(levelTime, randomSeed, restart)
         classStats = {}
         classState = {}
     end
+
+    pending_send = false
+    pending_send_at_ms = 0
+    pending_send_token = nil
 
     initMaxClients()
     rebuild_connectedClients()
