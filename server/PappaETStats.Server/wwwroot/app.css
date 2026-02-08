@@ -75,3 +75,54 @@ h1:focus {
         0 0 1px rgba(255, 255, 255, 0.25);
 }
 
+/* MatchDetails: keep per-team player grids aligned by using fixed widths for numeric columns.
+   The player/name column remains flexible but is capped and uses ellipsis. */
+:root {
+    --pappa-col-expand: 44px;
+    --pappa-col-kdr: 7ch;
+    --pappa-col-2: 5ch;
+    --pappa-col-5: 7.5ch;
+    --pappa-col-player-min: 18ch;
+    --pappa-col-player-max: 34ch;
+}
+
+.pappa-players-grid {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.pappa-players-grid .pappa-col-num {
+    white-space: nowrap;
+}
+
+.pappa-players-grid .pappa-col-kdr {
+    width: var(--pappa-col-kdr);
+    min-width: var(--pappa-col-kdr);
+    max-width: var(--pappa-col-kdr);
+}
+
+.pappa-players-grid .pappa-col-2 {
+    width: var(--pappa-col-2);
+    min-width: var(--pappa-col-2);
+    max-width: var(--pappa-col-2);
+}
+
+.pappa-players-grid .pappa-col-5 {
+    width: var(--pappa-col-5);
+    min-width: var(--pappa-col-5);
+    max-width: var(--pappa-col-5);
+}
+
+.pappa-players-grid .pappa-col-player {
+    width: clamp(var(--pappa-col-player-min), 30vw, var(--pappa-col-player-max));
+    min-width: var(--pappa-col-player-min);
+}
+
+.pappa-player-cell {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
