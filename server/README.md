@@ -38,7 +38,9 @@ Suggested environment variables:
 - `Pappa__Db__Provider` – `sqlite` (default) or `mariadb`
 - `Pappa__Db__ConnectionString` – provider connection string
 - `Pappa__Ingest__Token` – token required by Lua/ingest callers
-- `PAPPA_PUBLIC_BASEURL` – used for link generation (optional)
+- `Pappa__Webhook__Url` – full webhook URL (optional)
+- `Pappa__Webhook__Token` – webhook bearer token (optional)
+- `Pappa__Webhook__FrontendBaseUrl` – public base URL used to build a link to MatchDetails (optional)
 
 Example MariaDB connection string (typical):
 
@@ -110,3 +112,14 @@ You’ll also want to ensure CORS is configured if you host UI and API separatel
 - Put the API behind HTTPS (reverse proxy like nginx/Caddy) if receiving data over the internet.
 - Rotate ingest tokens; log and reject unauthorized posts.
 - Consider batching on the Lua side and idempotency on the API side (dedupe repeated events).
+
+## Webhook (game completed)
+
+If `Pappa:Webhook:Url` is configured, the server will `POST` a JSON payload after **round 2** is successfully ingested.
+
+Payload shape:
+
+- `map` (string)
+- `winner` (string; `Team 1`, `Team 2`, or `Draw`)
+- `teams` (array of `{ name, players[] }`)
+- `link` (string; points directly to `/matches/{matchDbId}`)

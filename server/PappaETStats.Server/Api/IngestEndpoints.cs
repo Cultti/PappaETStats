@@ -1,9 +1,12 @@
 using System.Text.Json;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using PappaETStats.Server.Data;
 using PappaETStats.Server.Domain;
 using PappaETStats.Server.Options;
+using PappaETStats.Server.Util;
 
 namespace PappaETStats.Server.Api;
 
@@ -224,6 +227,9 @@ public static class IngestEndpoints
         HttpRequest request,
         IDbContextFactory<StatsDbContext> dbFactory,
         IOptions<IngestOptions> ingestOptions,
+        IOptions<WebhookOptions> webhookOptions,
+        IHttpClientFactory httpClientFactory,
+        ILoggerFactory loggerFactory,
         MatchIngestDto dto,
         CancellationToken cancellationToken)
     {
@@ -536,6 +542,143 @@ public static class IngestEndpoints
         db.MatchRounds.Add(round);
         await db.SaveChangesAsync(cancellationToken);
 
+        if (dto.Round == 2)
+        {
+            var logger = loggerFactory.CreateLogger("PappaETStats.Server.Api.IngestEndpoints");
+            await TrySendGameCompletedWebhookAsync(
+                httpClientFactory,
+                webhookOptions.Value,
+                logger,
+                match,
+                round,
+                CancellationToken.None);
+        }
+
         return Results.Ok(new { matchId = match.ExternalMatchId, round = round.RoundNumber, matchDbId = match.Id, roundDbId = round.Id });
+    }
+
+    private static async Task TrySendGameCompletedWebhookAsync(
+        IHttpClientFactory httpClientFactory,
+        WebhookOptions options,
+        ILogger logger,
+        Match match,
+        MatchRound round2,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(options.Url))
+        {
+            return;
+        }
+
+        static string? NormalizeBaseUrl(string? baseUrl)
+        {
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                return null;
+            }
+
+            return baseUrl.Trim().TrimEnd('/');
+        }
+
+        static string CombineUrl(string? baseUrl, string path)
+        {
+            var b = NormalizeBaseUrl(baseUrl);
+            if (string.IsNullOrWhiteSpace(b))
+            {
+                return path.StartsWith('/') ? path : "/" + path;
+            }
+
+            var p = path.StartsWith('/') ? path : "/" + path;
+            return b + p;
+        }
+
+        static int MapRoundTeamToOverallTeam(int roundNumber, int teamId)
+        {
+            if (roundNumber == 2)
+            {
+                return teamId switch
+                {
+                    1 => 2,
+                    2 => 1,
+                    _ => teamId,
+                };
+            }
+
+            return teamId;
+        }
+
+        var matchLink = CombineUrl(options.FrontendBaseUrl, $"/matches/{match.Id}");
+
+        var winnerText = match.Winner switch
+        {
+            MatchWinner.Team1 => "Team 1",
+            MatchWinner.Team2 => "Team 2",
+            MatchWinner.Draw => "Draw",
+            _ => $"Team {MapRoundTeamToOverallTeam(round2.RoundNumber, round2.WinnerTeam)}",
+        };
+
+        var teams = round2.Sides
+            .OrderBy(s => s.Team)
+            .Select(s =>
+            {
+                var overallTeam = MapRoundTeamToOverallTeam(round2.RoundNumber, s.Team);
+                var players = s.Players
+                    .OrderBy(p => EtColorCodes.Strip(p.Name))
+                    .Select(p => EtColorCodes.Strip(p.Name))
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .ToArray();
+
+                return new
+                {
+                    name = $"Team {overallTeam}",
+                    players
+                };
+            })
+            .ToArray();
+
+        var payload = new
+        {
+            map = match.MapName,
+            winner = winnerText,
+            teams,
+            link = matchLink,
+        };
+
+        try
+        {
+            var client = httpClientFactory.CreateClient("Webhook");
+
+            using var message = new HttpRequestMessage(HttpMethod.Post, options.Url);
+            message.Content = JsonContent.Create(payload);
+
+            if (!string.IsNullOrWhiteSpace(options.Token))
+            {
+                message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.Token.Trim());
+            }
+
+            using var response = await client.SendAsync(message, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = string.Empty;
+                try
+                {
+                    body = await response.Content.ReadAsStringAsync(cancellationToken);
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                logger.LogWarning(
+                    "Webhook POST to {Url} failed with {StatusCode}. Body: {Body}",
+                    options.Url,
+                    (int)response.StatusCode,
+                    body);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Webhook POST to {Url} failed.", options.Url);
+        }
     }
 }

@@ -6,6 +6,7 @@ using PappaETStats.Server.Api;
 using PappaETStats.Server.Components;
 using PappaETStats.Server.Data;
 using PappaETStats.Server.Options;
+using PappaETStats.Server.Services;
 
 var baseDirectory = AppContext.BaseDirectory;
 var looksLikePublishedOutput =
@@ -41,6 +42,16 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.Configure<IngestOptions>(builder.Configuration.GetSection(IngestOptions.SectionName));
 builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminOptions.SectionName));
 builder.Services.Configure<DbOptions>(builder.Configuration.GetSection(DbOptions.SectionName));
+builder.Services.Configure<DemoStorageOptions>(builder.Configuration.GetSection(DemoStorageOptions.SectionName));
+builder.Services.Configure<WebhookOptions>(builder.Configuration.GetSection(WebhookOptions.SectionName));
+
+builder.Services.AddHttpClient("Webhook", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+
+builder.Services.AddSingleton<DemoCompressionQueue>();
+builder.Services.AddHostedService<DemoCompressionHostedService>();
 
 var dbOptions = builder.Configuration.GetSection(DbOptions.SectionName).Get<DbOptions>() ?? new DbOptions();
 var provider = (dbOptions.Provider ?? "sqlite").Trim().ToLowerInvariant();
@@ -118,6 +129,7 @@ app.UseAntiforgery();
 
 app.MapIngestEndpoints();
 app.MapAdminEndpoints();
+app.MapDemoEndpoints();
 
 if (app.Environment.IsDevelopment())
 {

@@ -26,5 +26,14 @@ public sealed class Match
 
     public MatchWinner? Winner { get; set; }
 
+    [MaxLength(256)]
+    public string? DemoFileName { get; set; }
+
+    [MaxLength(256)]
+    public string? DemoZipFileName { get; set; }
+
+    public DateTime? DemoUploadedAtUtc { get; set; }
+    public DateTime? DemoZippedAtUtc { get; set; }
+
     public List<MatchRound> Rounds { get; set; } = new();
 }

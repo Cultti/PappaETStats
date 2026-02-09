@@ -20,6 +20,26 @@ else
             <MudText Typo="Typo.body1"><strong>Server:</strong> <EtColoredText Text="@_match.ServerName" /></MudText>
             <MudText Typo="Typo.body2"><strong>Time:</strong> @(_round1?.NextTimeLimit ?? "-") / @(_round2?.NextTimeLimit ?? "-")</MudText>
             <MudText Typo="Typo.body2"><strong>Result:</strong> @MatchResultText(_match)</MudText>
+
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.body1"><strong>Demo:</strong></MudText>
+            @if (_match.DemoZippedAtUtc is not null && !string.IsNullOrWhiteSpace(_match.DemoZipFileName))
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="@($"/api/matches/{Uri.EscapeDataString(_match.ExternalMatchId)}/demo.zip")">
+                        Download demo (zip)
+                    </MudButton>
+                    <MudText Typo="Typo.body2">@_match.DemoZipFileName</MudText>
+                </MudStack>
+            }
+            else if (_match.DemoUploadedAtUtc is not null)
+            {
+                <MudText Typo="Typo.body2">Demo uploaded; compressing…</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2">No demo uploaded for this match.</MudText>
+            }
         </MudStack>
     </MudPaper>
 
@@ -87,6 +107,10 @@ else
                 m.ServerName,
                 m.ServerIp,
                 m.ServerPort,
+                m.DemoFileName,
+                m.DemoZipFileName,
+                m.DemoUploadedAtUtc,
+                m.DemoZippedAtUtc,
             })
             .FirstOrDefaultAsync();
 
@@ -203,6 +227,10 @@ else
             ServerName = matchInfo.ServerName,
             ServerIp = matchInfo.ServerIp,
             ServerPort = matchInfo.ServerPort,
+            DemoFileName = matchInfo.DemoFileName,
+            DemoZipFileName = matchInfo.DemoZipFileName,
+            DemoUploadedAtUtc = matchInfo.DemoUploadedAtUtc,
+            DemoZippedAtUtc = matchInfo.DemoZippedAtUtc,
             Rounds = rounds,
         };
 
