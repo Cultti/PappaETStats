@@ -125,7 +125,7 @@ public sealed class WeaponStatDto
     public int Hits { get; init; }
 
     [JsonPropertyName("atts")]
-    public int Atts { get; init; }
+    public long Atts { get; init; }
 
     [JsonPropertyName("weapon")]
     public int Weapon { get; init; }

@@ -63,7 +63,11 @@ switch (provider)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            connectionString = "Data Source=App_Data/pappastats.db";
+            connectionString = "Data Source=App_Data/pappastats.db;Foreign Keys=True";
+        }
+        else if (!connectionString.Contains("Foreign Keys=", StringComparison.OrdinalIgnoreCase))
+        {
+            connectionString = connectionString.TrimEnd().TrimEnd(';') + ";Foreign Keys=True";
         }
 
         builder.Services.AddDbContextFactory<StatsDbContext>(options => options.UseSqlite(connectionString));

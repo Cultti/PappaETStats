@@ -14,6 +14,31 @@ public static class IngestEndpoints
 {
     private sealed record Round1WeaponSnapshot(int Hits, int Atts, int Kills, int Deaths, int Headshots);
 
+    private static int NormalizeCountToInt(long value)
+    {
+        if (value <= 0)
+        {
+            return 0;
+        }
+
+        if (value <= int.MaxValue)
+        {
+            return (int)value;
+        }
+
+        // Some sources can emit an unsigned 32-bit representation for counters.
+        // If the sign bit is set (>= 2^31) but within uint32 range, interpret it by clearing the sign bit.
+        // Example: 2147483660 (0x8000000C) -> 12.
+        const long signBit = 2_147_483_648L;
+        if (value >= signBit && value <= uint.MaxValue)
+        {
+            var normalized = value - signBit;
+            return normalized <= int.MaxValue ? (int)normalized : int.MaxValue;
+        }
+
+        return int.MaxValue;
+    }
+
     private sealed record Round1PlayerSnapshot(
         int Xp,
         int DamageGiven,
@@ -85,7 +110,7 @@ public static class IngestEndpoints
                 total++;
 
                 var hitsDiff = w2.Hits - w1.Hits;
-                var attsDiff = w2.Atts - w1.Atts;
+                var attsDiff = NormalizeCountToInt(w2.Atts) - w1.Atts;
                 var killsDiff = w2.Kills - w1.Kills;
                 var deathsDiff = w2.Deaths - w1.Deaths;
                 var hsDiff = w2.Headshots - w1.Headshots;
@@ -411,7 +436,7 @@ public static class IngestEndpoints
             RoundStartUnix = dto.RoundStartUnix,
             RoundEndUnix = dto.RoundEndUnix,
             IngestedAtUtc = DateTime.UtcNow,
-            RawJson = JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = false })
+            RawJson = "Not supported"
         };
 
         // Persist overall match winner once round 2 is ingested.
@@ -477,12 +502,14 @@ public static class IngestEndpoints
                         ? w1
                         : null;
 
+                    var atts2 = NormalizeCountToInt(w.Atts);
+
                     player.WeaponStats.Add(new MatchPlayerWeaponStat
                     {
                         Id = Guid.NewGuid(),
                         Weapon = w.Weapon,
                         Hits = r1Weapon is null ? w.Hits : Math.Max(0, w.Hits - r1Weapon.Hits),
-                        Atts = r1Weapon is null ? w.Atts : Math.Max(0, w.Atts - r1Weapon.Atts),
+                        Atts = r1Weapon is null ? atts2 : Math.Max(0, atts2 - r1Weapon.Atts),
                         Kills = r1Weapon is null ? w.Kills : Math.Max(0, w.Kills - r1Weapon.Kills),
                         Deaths = r1Weapon is null ? w.Deaths : Math.Max(0, w.Deaths - r1Weapon.Deaths),
                         Headshots = r1Weapon is null ? w.Headshots : Math.Max(0, w.Headshots - r1Weapon.Headshots)
@@ -550,6 +577,7 @@ public static class IngestEndpoints
                 webhookOptions.Value,
                 logger,
                 match,
+            round1ForWinner,
                 round,
                 CancellationToken.None);
         }
@@ -562,6 +590,7 @@ public static class IngestEndpoints
         WebhookOptions options,
         ILogger logger,
         Match match,
+        MatchRound? round1,
         MatchRound round2,
         CancellationToken cancellationToken)
     {
@@ -609,6 +638,24 @@ public static class IngestEndpoints
 
         var matchLink = CombineUrl(options.FrontendBaseUrl, $"/matches/{match.Id}");
 
+        static string FormatSideTime(MatchRound? round)
+        {
+            if (round is null)
+            {
+                return "";
+            }
+
+            var v = (round.NextTimeLimit ?? string.Empty).Trim();
+            if (!string.IsNullOrEmpty(v))
+            {
+                return v;
+            }
+
+            return (round.TimeLimit ?? string.Empty).Trim();
+        }
+
+        var time = $"{FormatSideTime(round1)} / {FormatSideTime(round2)}".Trim();
+
         var winnerText = match.Winner switch
         {
             MatchWinner.Team1 => "Team 1",
@@ -618,7 +665,6 @@ public static class IngestEndpoints
         };
 
         var teams = round2.Sides
-            .OrderBy(s => s.Team)
             .Select(s =>
             {
                 var overallTeam = MapRoundTeamToOverallTeam(round2.RoundNumber, s.Team);
@@ -631,15 +677,19 @@ public static class IngestEndpoints
                 return new
                 {
                     name = $"Team {overallTeam}",
+                    overallTeam,
                     players
                 };
             })
+            .OrderBy(t => t.overallTeam)
+            .Select(t => new { t.name, t.players })
             .ToArray();
 
         var payload = new
         {
             map = match.MapName,
             winner = winnerText,
+            time,
             teams,
             link = matchLink,
         };

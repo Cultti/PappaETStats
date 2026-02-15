@@ -62,29 +62,30 @@ public static class AdminEndpoints
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
 
-        // Load full graph to ensure deletes succeed even if DB-level cascades are disabled.
-        var match = await db.Matches
-            .Include(m => m.Rounds)
-                .ThenInclude(r => r.Sides)
-                    .ThenInclude(s => s.Players)
-                        .ThenInclude(p => p.WeaponStats)
-            .Include(m => m.Rounds)
-                .ThenInclude(r => r.Sides)
-                    .ThenInclude(s => s.Players)
-                        .ThenInclude(p => p.ClassStats)
-            .Include(m => m.Rounds)
-                .ThenInclude(r => r.Obituaries)
-            .FirstOrDefaultAsync(m => m.Id == matchId, cancellationToken);
-
-        if (match is null)
+        // Delete directly in the database for minimal memory usage.
+        // This relies on DB-level ON DELETE CASCADE foreign keys to remove dependent rows.
+        try
         {
-            return Results.NotFound(new { error = "match not found", matchId });
+            var deletedRows = await db.Matches
+                .Where(m => m.Id == matchId)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            if (deletedRows == 0)
+            {
+                return Results.NotFound(new { error = "match not found", matchId });
+            }
+
+            return Results.Ok(new { deleted = true, matchId });
         }
-
-        db.Matches.Remove(match);
-        await db.SaveChangesAsync(cancellationToken);
-
-        return Results.Ok(new { deleted = true, matchId });
+        catch (DbUpdateException ex)
+        {
+            return Results.Conflict(new
+            {
+                error = "delete failed (missing DB cascades or restricted foreign keys)",
+                matchId,
+                detail = ex.GetBaseException().Message
+            });
+        }
     }
 
     private static async Task<IResult> RecalculateMatchWinnersAsync(
