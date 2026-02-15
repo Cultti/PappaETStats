@@ -53,6 +53,52 @@ public sealed class SkillRatingCalculator
 
         var builder = ImmutableDictionary.CreateBuilder<Guid, SkillRating>();
 
+        var exponent = _options.ContributionExponent;
+        if (double.IsNaN(exponent) || double.IsInfinity(exponent) || exponent <= 0.0)
+        {
+            exponent = 1.0;
+        }
+
+        // Pre-compute normalization terms.
+        // Winners use normalized w^exponent within the team.
+        // Losers use normalized (1 - w)^exponent within the losing team.
+        double sumWinAxis = 0.0;
+        double sumWinAllies = 0.0;
+        double sumLoseAxis = 0.0;
+        double sumLoseAllies = 0.0;
+        var axisCount = 0;
+        var alliesCount = 0;
+
+        foreach (var p in players)
+        {
+            if (!weights.TryGetValue(p.PlayerId, out var contributionWeight))
+            {
+                contributionWeight = 0.0;
+            }
+
+            if (contributionWeight < 0.0) contributionWeight = 0.0;
+            if (contributionWeight > 1.0) contributionWeight = 1.0;
+
+            var winRaw = Math.Pow(contributionWeight, exponent);
+
+            var loseBase = 1.0 - contributionWeight;
+            if (loseBase < 0.0) loseBase = 0.0;
+            var loseRaw = Math.Pow(loseBase, exponent);
+
+            if (p.Team == Team.Axis)
+            {
+                sumWinAxis += winRaw;
+                sumLoseAxis += loseRaw;
+                axisCount++;
+            }
+            else if (p.Team == Team.Allies)
+            {
+                sumWinAllies += winRaw;
+                sumLoseAllies += loseRaw;
+                alliesCount++;
+            }
+        }
+
         foreach (var p in players)
         {
             var playerTeam = p.Team;
@@ -66,9 +112,42 @@ public sealed class SkillRatingCalculator
             if (!weights.TryGetValue(p.PlayerId, out var contributionWeight))
                 contributionWeight = 0.0;
 
-            // Winner: higher contribution => bigger boost.
+            // Winner: higher contribution => larger increase.
             // Loser: higher contribution => smaller decrease.
-            var contributionFactor = isWinner ? contributionWeight : (1.0 - contributionWeight);
+            // For losers, we use normalized (1 - w)^exponent within the losing team to keep scaling balanced.
+            double contributionFactor;
+            if (isWinner)
+            {
+                var winRaw = Math.Pow(Math.Clamp(contributionWeight, 0.0, 1.0), exponent);
+                var denom = p.Team == Team.Axis ? sumWinAxis : sumWinAllies;
+                if (denom > 0.0)
+                {
+                    contributionFactor = winRaw / denom;
+                }
+                else
+                {
+                    var teamCount = p.Team == Team.Axis ? axisCount : alliesCount;
+                    contributionFactor = teamCount > 0 ? 1.0 / teamCount : 0.0;
+                }
+            }
+            else
+            {
+                var loseBase = 1.0 - Math.Clamp(contributionWeight, 0.0, 1.0);
+                if (loseBase < 0.0) loseBase = 0.0;
+                var loseRaw = Math.Pow(loseBase, exponent);
+
+                var denom = p.Team == Team.Axis ? sumLoseAxis : sumLoseAllies;
+                if (denom > 0.0)
+                {
+                    contributionFactor = loseRaw / denom;
+                }
+                else
+                {
+                    // Edge case: single-player team => inverse sum is 0. Fall back to equal weighting.
+                    var teamCount = p.Team == Team.Axis ? axisCount : alliesCount;
+                    contributionFactor = teamCount > 0 ? 1.0 / teamCount : 0.0;
+                }
+            }
             if (contributionFactor <= 0.0)
                 continue;
 
@@ -126,24 +205,50 @@ public sealed class SkillRatingCalculator
         int numPlayersX = 0;
         int numPlayersL = 0;
 
-        // Stopwatch-friendly: compute contribution weights against total damage dealt in the match,
-        // not separately per team (players may have played both sides).
-        long totalDamageAll = 0;
+        var weights = new Dictionary<Guid, double>(capacity: players.Count);
+
+        long totalDamageAxis = 0;
+        long totalDamageAllies = 0;
+        var axisPlayers = 0;
+        var alliesPlayers = 0;
+
         foreach (var p in players)
         {
-            totalDamageAll += Math.Max(0, p.DamageDealt) + damageFloor;
+            var dmg = Math.Max(0, p.DamageDealt) + damageFloor;
+            if (p.Team == Team.Axis)
+            {
+                totalDamageAxis += dmg;
+                axisPlayers++;
+            }
+            else if (p.Team == Team.Allies)
+            {
+                totalDamageAllies += dmg;
+                alliesPlayers++;
+            }
         }
 
-        var weights = new Dictionary<Guid, double>(capacity: players.Count);
-        var equalWeight = players.Count > 0 ? 1.0 / players.Count : 0.0;
+        var equalWeightAxis = axisPlayers > 0 ? 1.0 / axisPlayers : 0.0;
+        var equalWeightAllies = alliesPlayers > 0 ? 1.0 / alliesPlayers : 0.0;
+        var equalWeightFallback = players.Count > 0 ? 1.0 / players.Count : 0.0;
 
         foreach (var p in players)
         {
             double w;
-            if (totalDamageAll > 0)
-                w = (Math.Max(0, p.DamageDealt) + damageFloor) / (double)totalDamageAll;
+            var dmg = Math.Max(0, p.DamageDealt) + damageFloor;
+
+            if (p.Team == Team.Axis)
+            {
+                w = totalDamageAxis > 0 ? dmg / (double)totalDamageAxis : equalWeightAxis;
+            }
+            else if (p.Team == Team.Allies)
+            {
+                w = totalDamageAllies > 0 ? dmg / (double)totalDamageAllies : equalWeightAllies;
+            }
             else
-                w = equalWeight;
+            {
+                // Unknown team value; fall back to equal weighting.
+                w = equalWeightFallback;
+            }
 
             if (w < 0.0) w = 0.0;
             weights[p.PlayerId] = w;
@@ -151,13 +256,15 @@ public sealed class SkillRatingCalculator
             // Team additive terms.
             if (p.Team == Team.Axis)
             {
-                teamMuX += p.Rating.Mu;
+                var participation = w * axisPlayers;   // sums to axisPlayers (ET-like “full time” scaling)
+                teamMuX += p.Rating.Mu * participation;
                 teamSigmaSqX += p.Rating.Sigma * p.Rating.Sigma;
                 numPlayersX++;
             }
             else if (p.Team == Team.Allies)
             {
-                teamMuL += p.Rating.Mu;
+                var participation = w * alliesPlayers; // sums to alliesPlayers
+                teamMuL += p.Rating.Mu * participation;
                 teamSigmaSqL += p.Rating.Sigma * p.Rating.Sigma;
                 numPlayersL++;
             }

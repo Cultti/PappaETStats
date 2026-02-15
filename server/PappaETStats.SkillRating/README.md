@@ -11,7 +11,7 @@ Standalone skill rating library (mu/sigma Bayesian update) ported from ET: Legac
 ```csharp
 using PappaETStats.SkillRating;
 
-var calc = new SkillRatingCalculator(new SkillRatingOptions { UseMapBias = false });
+var calc = new SkillRatingCalculator(new SkillRatingOptions());
 
 var players = new[]
 {

@@ -6,6 +6,7 @@ namespace PappaETStats.Server.Data;
 
 public sealed class StatsDbContext(DbContextOptions<StatsDbContext> options) : DbContext(options)
 {
+    public DbSet<Player> Players => Set<Player>();
     public DbSet<Match> Matches => Set<Match>();
     public DbSet<MatchRound> MatchRounds => Set<MatchRound>();
     public DbSet<MatchSide> MatchSides => Set<MatchSide>();
@@ -75,6 +76,13 @@ public sealed class StatsDbContext(DbContextOptions<StatsDbContext> options) : D
             .WithOne(c => c.MatchPlayer)
             .HasForeignKey(c => c.MatchPlayerId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Player>()
+            .HasKey(p => p.Guid);
+
+        modelBuilder.Entity<Player>()
+            .Property(p => p.Guid)
+            .HasColumnType("varchar(64)");
 
         base.OnModelCreating(modelBuilder);
     }

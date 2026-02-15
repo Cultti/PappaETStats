@@ -19,5 +19,11 @@ public sealed record SkillRatingOptions
     /// <summary>Draw margin (ET: Legacy assumes 0).</summary>
     public double Epsilon { get; init; } = 0.0;
 
+    /// <summary>
+    /// Controls how strongly damage contribution affects rating deltas.
+    /// 1.0 = linear weighting, &gt;1.0 emphasizes top contributors more (and shields them more on losses).
+    /// </summary>
+    public double ContributionExponent { get; init; } = 1.0;
+
     public SkillRating DefaultRating => new(Mu, Sigma);
 }
