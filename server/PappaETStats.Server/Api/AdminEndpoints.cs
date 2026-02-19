@@ -191,226 +191,236 @@ public static class AdminEndpoints
             return authResult;
         }
 
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
+        // MySQL retry execution strategy can't be combined with user transactions
+        // unless the transaction is created inside the execution strategy callback.
+        await using var strategyDb = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var strategy = strategyDb.Database.CreateExecutionStrategy();
 
-        var options = new SkillRatingOptions();
-        var calculator = new SkillRatingCalculator(options);
-
-        var deletedPlayers = await db.Players.ExecuteDeleteAsync(cancellationToken);
-
-        // Replay completed matches in chronological order (round 2 ingest time).
-        var completedMatchIdsInOrder = await db.MatchRounds
-            .AsNoTracking()
-            .Where(r => r.RoundNumber == 2 && (r.Match.Winner == MatchWinner.Team1 || r.Match.Winner == MatchWinner.Team2))
-            .OrderBy(r => r.IngestedAtUtc)
-            .Select(r => r.MatchId)
-            .ToListAsync(cancellationToken);
-
-        var matchIds = completedMatchIdsInOrder
-            .Distinct()
-            .ToList();
-
-        var playerRows = new Dictionary<string, Player>(StringComparer.OrdinalIgnoreCase);
-
-        var processedMatches = 0;
-        var skippedMissingRounds = 0;
-        var skippedDraws = 0;
-        var skippedUnevenTeams = 0;
-        var skippedEmpty = 0;
-
-        foreach (var matchId in matchIds)
+        var result = await strategy.ExecuteAsync(async () =>
         {
-            var rounds = await db.MatchRounds
+            await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+            await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
+
+            var options = new SkillRatingOptions();
+            var calculator = new SkillRatingCalculator(options);
+
+            var deletedPlayers = await db.Players.ExecuteDeleteAsync(cancellationToken);
+
+            // Replay completed matches in chronological order (round 2 ingest time).
+            var completedMatchIdsInOrder = await db.MatchRounds
                 .AsNoTracking()
-                .Include(r => r.Match)
-                .Include(r => r.Sides)
-                    .ThenInclude(s => s.Players)
-                .Where(r => r.MatchId == matchId && (r.RoundNumber == 1 || r.RoundNumber == 2))
+                .Where(r => r.RoundNumber == 2 && (r.Match.Winner == MatchWinner.Team1 || r.Match.Winner == MatchWinner.Team2))
+                .OrderBy(r => r.IngestedAtUtc)
+                .Select(r => r.MatchId)
                 .ToListAsync(cancellationToken);
 
-            if (rounds.Count == 0)
-            {
-                skippedMissingRounds++;
-                continue;
-            }
+            var matchIds = completedMatchIdsInOrder
+                .Distinct()
+                .ToList();
 
-            var round1 = rounds.FirstOrDefault(r => r.RoundNumber == 1);
-            var round2 = rounds.FirstOrDefault(r => r.RoundNumber == 2);
-            if (round2 is null)
-            {
-                skippedMissingRounds++;
-                continue;
-            }
+            var playerRows = new Dictionary<string, Player>(StringComparer.OrdinalIgnoreCase);
 
-            var match = rounds[0].Match;
-            var winner = match.Winner;
-            if (winner is not MatchWinner.Team1 and not MatchWinner.Team2)
-            {
-                winner = MatchWinnerCalculator.DetermineWinner(round1, round2);
-            }
+            var processedMatches = 0;
+            var skippedMissingRounds = 0;
+            var skippedDraws = 0;
+            var skippedUnevenTeams = 0;
+            var skippedEmpty = 0;
 
-            if (winner is not MatchWinner.Team1 and not MatchWinner.Team2)
+            foreach (var matchId in matchIds)
             {
-                skippedDraws++;
-                continue;
-            }
+                var rounds = await db.MatchRounds
+                    .AsNoTracking()
+                    .Include(r => r.Match)
+                    .Include(r => r.Sides)
+                        .ThenInclude(s => s.Players)
+                    .Where(r => r.MatchId == matchId && (r.RoundNumber == 1 || r.RoundNumber == 2))
+                    .ToListAsync(cancellationToken);
 
-            static int MapToOverallTeam(int roundNumber, int teamId)
-            {
-                // In stopwatch, teams swap between rounds.
-                // Overall Team 1/2 are defined by round 1.
-                if (roundNumber == 2)
+                if (rounds.Count == 0)
                 {
-                    return teamId switch
-                    {
-                        1 => 2,
-                        2 => 1,
-                        _ => teamId,
-                    };
-                }
-
-                return teamId;
-            }
-
-            static Team? MapOverallTeamToSkillTeam(int overallTeamId) => overallTeamId switch
-            {
-                1 => Team.Axis,
-                2 => Team.Allies,
-                _ => null,
-            };
-
-            var winningOverallTeamId = winner == MatchWinner.Team1 ? 1 : 2;
-            var winningSkillTeam = MapOverallTeamToSkillTeam(winningOverallTeamId);
-            if (winningSkillTeam is null)
-            {
-                skippedEmpty++;
-                continue;
-            }
-
-            var aggregate = new Dictionary<string, (Guid playerId, Team team, int damageDealt)>(StringComparer.OrdinalIgnoreCase);
-
-            void AddRound(MatchRound r)
-            {
-                foreach (var p in r.Sides.SelectMany(s => s.Players))
-                {
-                    if (string.IsNullOrWhiteSpace(p.Guid))
-                    {
-                        continue;
-                    }
-
-                    var guidString = p.Guid.Trim();
-                    if (!Guid.TryParseExact(guidString, "N", out var playerId))
-                    {
-                        continue;
-                    }
-
-                    var overallTeamId = MapToOverallTeam(r.RoundNumber, p.Team);
-                    var skillTeam = MapOverallTeamToSkillTeam(overallTeamId);
-                    if (skillTeam is null)
-                    {
-                        continue;
-                    }
-
-                    var damage = Math.Max(0, p.DamageGiven);
-
-                    if (aggregate.TryGetValue(guidString, out var existing))
-                    {
-                        aggregate[guidString] = (
-                            existing.playerId,
-                            existing.team,
-                            checked(existing.damageDealt + damage));
-                    }
-                    else
-                    {
-                        aggregate[guidString] = (playerId, skillTeam.Value, damage);
-                    }
-                }
-            }
-
-            if (round1 is not null)
-            {
-                AddRound(round1);
-            }
-            AddRound(round2);
-
-            if (aggregate.Count == 0)
-            {
-                skippedEmpty++;
-                continue;
-            }
-
-            var axisCount = aggregate.Values.Count(v => v.team == Team.Axis);
-            var alliesCount = aggregate.Values.Count(v => v.team == Team.Allies);
-            if (axisCount == 0 || alliesCount == 0 || axisCount != alliesCount)
-            {
-                skippedUnevenTeams++;
-                continue;
-            }
-
-            // Ensure players exist with default ratings.
-            foreach (var guidString in aggregate.Keys)
-            {
-                if (playerRows.ContainsKey(guidString))
-                {
+                    skippedMissingRounds++;
                     continue;
                 }
 
-                var created = new Player
+                var round1 = rounds.FirstOrDefault(r => r.RoundNumber == 1);
+                var round2 = rounds.FirstOrDefault(r => r.RoundNumber == 2);
+                if (round2 is null)
                 {
-                    Guid = guidString,
-                    Mu = options.Mu,
-                    Sigma = options.Sigma,
+                    skippedMissingRounds++;
+                    continue;
+                }
+
+                var match = rounds[0].Match;
+                var winner = match.Winner;
+                if (winner is not MatchWinner.Team1 and not MatchWinner.Team2)
+                {
+                    winner = MatchWinnerCalculator.DetermineWinner(round1, round2);
+                }
+
+                if (winner is not MatchWinner.Team1 and not MatchWinner.Team2)
+                {
+                    skippedDraws++;
+                    continue;
+                }
+
+                static int MapToOverallTeam(int roundNumber, int teamId)
+                {
+                    // In stopwatch, teams swap between rounds.
+                    // Overall Team 1/2 are defined by round 1.
+                    if (roundNumber == 2)
+                    {
+                        return teamId switch
+                        {
+                            1 => 2,
+                            2 => 1,
+                            _ => teamId,
+                        };
+                    }
+
+                    return teamId;
+                }
+
+                static Team? MapOverallTeamToSkillTeam(int overallTeamId) => overallTeamId switch
+                {
+                    1 => Team.Axis,
+                    2 => Team.Allies,
+                    _ => null,
                 };
 
-                db.Players.Add(created);
-                playerRows[guidString] = created;
-            }
-
-            // Build calculator input from current ratings.
-            var states = new List<MatchPlayerState>(aggregate.Count);
-            var idToGuidString = new Dictionary<Guid, string>(aggregate.Count);
-
-            foreach (var (guidString, v) in aggregate)
-            {
-                var row = playerRows[guidString];
-                idToGuidString[v.playerId] = guidString;
-
-                states.Add(new MatchPlayerState(
-                    PlayerId: v.playerId,
-                    Rating: new PappaETStats.SkillRating.SkillRating(row.Mu, row.Sigma),
-                    Team: v.team,
-                    DamageDealt: v.damageDealt));
-            }
-
-            var updated = calculator.UpdateRatings(states, winner: winningSkillTeam.Value, damageFloor: 0);
-            foreach (var (playerId, rating) in updated)
-            {
-                if (!idToGuidString.TryGetValue(playerId, out var guidString))
+                var winningOverallTeamId = winner == MatchWinner.Team1 ? 1 : 2;
+                var winningSkillTeam = MapOverallTeamToSkillTeam(winningOverallTeamId);
+                if (winningSkillTeam is null)
                 {
+                    skippedEmpty++;
                     continue;
                 }
 
-                var row = playerRows[guidString];
-                row.Mu = rating.Mu;
-                row.Sigma = rating.Sigma;
+                var aggregate = new Dictionary<string, (Guid playerId, Team team, int damageDealt)>(StringComparer.OrdinalIgnoreCase);
+
+                void AddRound(MatchRound r)
+                {
+                    foreach (var p in r.Sides.SelectMany(s => s.Players))
+                    {
+                        if (string.IsNullOrWhiteSpace(p.Guid))
+                        {
+                            continue;
+                        }
+
+                        var guidString = p.Guid.Trim();
+                        if (!Guid.TryParseExact(guidString, "N", out var playerId))
+                        {
+                            continue;
+                        }
+
+                        var overallTeamId = MapToOverallTeam(r.RoundNumber, p.Team);
+                        var skillTeam = MapOverallTeamToSkillTeam(overallTeamId);
+                        if (skillTeam is null)
+                        {
+                            continue;
+                        }
+
+                        var damage = Math.Max(0, p.DamageGiven);
+
+                        if (aggregate.TryGetValue(guidString, out var existing))
+                        {
+                            aggregate[guidString] = (
+                                existing.playerId,
+                                existing.team,
+                                checked(existing.damageDealt + damage));
+                        }
+                        else
+                        {
+                            aggregate[guidString] = (playerId, skillTeam.Value, damage);
+                        }
+                    }
+                }
+
+                if (round1 is not null)
+                {
+                    AddRound(round1);
+                }
+                AddRound(round2);
+
+                if (aggregate.Count == 0)
+                {
+                    skippedEmpty++;
+                    continue;
+                }
+
+                var axisCount = aggregate.Values.Count(v => v.team == Team.Axis);
+                var alliesCount = aggregate.Values.Count(v => v.team == Team.Allies);
+                if (axisCount == 0 || alliesCount == 0 || axisCount != alliesCount)
+                {
+                    skippedUnevenTeams++;
+                    continue;
+                }
+
+                // Ensure players exist with default ratings.
+                foreach (var guidString in aggregate.Keys)
+                {
+                    if (playerRows.ContainsKey(guidString))
+                    {
+                        continue;
+                    }
+
+                    var created = new Player
+                    {
+                        Guid = guidString,
+                        Mu = options.Mu,
+                        Sigma = options.Sigma,
+                    };
+
+                    db.Players.Add(created);
+                    playerRows[guidString] = created;
+                }
+
+                // Build calculator input from current ratings.
+                var states = new List<MatchPlayerState>(aggregate.Count);
+                var idToGuidString = new Dictionary<Guid, string>(aggregate.Count);
+
+                foreach (var (guidString, v) in aggregate)
+                {
+                    var row = playerRows[guidString];
+                    idToGuidString[v.playerId] = guidString;
+
+                    states.Add(new MatchPlayerState(
+                        PlayerId: v.playerId,
+                        Rating: new PappaETStats.SkillRating.SkillRating(row.Mu, row.Sigma),
+                        Team: v.team,
+                        DamageDealt: v.damageDealt));
+                }
+
+                var updated = calculator.UpdateRatings(states, winner: winningSkillTeam.Value, damageFloor: 0);
+                foreach (var (playerId, rating) in updated)
+                {
+                    if (!idToGuidString.TryGetValue(playerId, out var guidString))
+                    {
+                        continue;
+                    }
+
+                    var row = playerRows[guidString];
+                    row.Mu = rating.Mu;
+                    row.Sigma = rating.Sigma;
+                }
+
+                processedMatches++;
             }
 
-            processedMatches++;
-        }
+            await db.SaveChangesAsync(cancellationToken);
+            await tx.CommitAsync(cancellationToken);
 
-        await db.SaveChangesAsync(cancellationToken);
-        await tx.CommitAsync(cancellationToken);
-
-        return Results.Ok(new
-        {
-            deletedPlayers,
-            processedMatches,
-            skippedMissingRounds,
-            skippedDraws,
-            skippedUnevenTeams,
-            skippedEmpty,
-            players = playerRows.Count,
+            return new
+            {
+                deletedPlayers,
+                processedMatches,
+                skippedMissingRounds,
+                skippedDraws,
+                skippedUnevenTeams,
+                skippedEmpty,
+                players = playerRows.Count,
+            };
         });
+
+        return Results.Ok(result);
     }
 }

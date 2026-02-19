@@ -134,6 +134,7 @@ app.UseAntiforgery();
 app.MapIngestEndpoints();
 app.MapAdminEndpoints();
 app.MapDemoEndpoints();
+app.MapTeamBalanceEndpoints();
 
 if (app.Environment.IsDevelopment())
 {
