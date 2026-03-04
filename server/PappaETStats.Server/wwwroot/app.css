@@ -69,10 +69,7 @@ h1:focus {
 
 /* ET-colored text: add a subtle outline so even dark colors (e.g. ^0) stay readable on dark UI. */
 .et-colored {
-    text-shadow:
-        0 0 1px rgba(0, 0, 0, 0.95),
-        0 0 2px rgba(0, 0, 0, 0.75),
-        0 0 1px rgba(255, 255, 255, 0.25);
+    background-color: rgba(255,255,255,0.03);
 }
 
 /* MatchDetails: keep per-team player grids aligned by using fixed widths for numeric columns.

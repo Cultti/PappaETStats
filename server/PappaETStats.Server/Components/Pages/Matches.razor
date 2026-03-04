@@ -6,6 +6,7 @@
 @using PappaETStats.Server.Domain
 @using PappaETStats.Server.Components.Shared
 @inject IDbContextFactory<StatsDbContext> DbFactory
+@inject NavigationManager NavManager
 
 <PageTitle>Matches</PageTitle>
 
@@ -25,6 +26,21 @@ else
             }
             else
             {
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Disabled="@(_selectedMatchIds.Count == 0)"
+                               OnClick="NavigateToCombinedResults">
+                        Combined results (@_selectedMatchIds.Count)
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Default"
+                               Disabled="@(_selectedMatchIds.Count == 0)"
+                               OnClick="ClearSelectedMatches">
+                        Clear selection
+                    </MudButton>
+                </MudStack>
+
                 <MatchListTable Items="_rows"
                                 GetMatchId="@(r => r.MatchId)"
                                 GetRound1StartUnix="@(r => r.Round1StartUnix)"
@@ -33,6 +49,9 @@ else
                                 GetTeam1PlayerCount="@(r => r.Team1PlayerCount)"
                                 GetTeam2PlayerCount="@(r => r.Team2PlayerCount)"
                                 GetTimeText="@(r => $"{(r.Round1NextTimeLimit ?? "-")} / {(r.Round2NextTimeLimit ?? "-")}")"
+                                EnableSelection="true"
+                                IsSelected="@(r => _selectedMatchIds.Contains(r.MatchId))"
+                                OnSelectionChanged="@((MatchListTable<Round2Row>.MatchSelectionChangedEventArgs<Round2Row> args) => OnMatchSelectionChanged(args))"
                                 Dense="true" />
             }
         </MudItem>
@@ -91,6 +110,7 @@ else
 @code {
     private List<Round2Row>? _rows;
     private List<PlayerRow>? _players;
+    private readonly HashSet<Guid> _selectedMatchIds = [];
 
     private string[] _mapPieLabels = Array.Empty<string>();
     private double[] _mapPieData = Array.Empty<double>();
@@ -215,6 +235,42 @@ else
 
     private static string PlayerHref(string guid)
         => $"/player/{Uri.EscapeDataString((guid ?? string.Empty).Trim())}";
+
+    private Task OnMatchSelectionChanged(MatchListTable<Round2Row>.MatchSelectionChangedEventArgs<Round2Row> args)
+    {
+        if (args.IsSelected)
+        {
+            _selectedMatchIds.Add(args.Item.MatchId);
+        }
+        else
+        {
+            _selectedMatchIds.Remove(args.Item.MatchId);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void ClearSelectedMatches() => _selectedMatchIds.Clear();
+
+    private void NavigateToCombinedResults()
+    {
+        if (_selectedMatchIds.Count == 0)
+        {
+            return;
+        }
+
+        var selectedInCurrentOrder = _rows is null
+            ? _selectedMatchIds
+            : _rows
+                .Where(r => _selectedMatchIds.Contains(r.MatchId))
+                .Select(r => r.MatchId);
+
+        var query = string.Join(
+            "&",
+            selectedInCurrentOrder.Select(id => $"id={Uri.EscapeDataString(id.ToString("D", System.Globalization.CultureInfo.InvariantCulture))}"));
+
+        NavManager.NavigateTo($"/matches/combined?{query}");
+    }
 
     private static string MatchResultText(Round2Row round2)
     {

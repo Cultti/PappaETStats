@@ -10,6 +10,10 @@
           Elevation="Elevation"
           RowsPerPage="RowsPerPage">
     <HeaderContent>
+        @if (EnableSelection)
+        {
+            <MudTh style="width:1%"></MudTh>
+        }
         <MudTh>Start time</MudTh>
         <MudTh>Map</MudTh>
         @if (ShowTeams)
@@ -20,6 +24,14 @@
         <MudTh>Server</MudTh>
     </HeaderContent>
     <RowTemplate Context="row">
+        @if (EnableSelection)
+        {
+            <MudTd DataLabel="Select">
+                <MudCheckBox T="bool"
+                             Value="@IsRowSelected(row)"
+                             ValueChanged="@(selected => OnRowSelectedChangedAsync(row, selected))" />
+            </MudTd>
+        }
         <MudTd DataLabel="Start time">
             <MudLink Href="@($"/matches/{GetMatchId(row)}")" Underline="Underline.Always">@FormatHelsinkiFromUnixSeconds(GetRound1StartUnix?.Invoke(row))</MudLink>
         </MudTd>
@@ -91,6 +103,31 @@
 
     [Parameter]
     public int[] PageSizeOptions { get; set; } = [10, 25, 50, 100];
+
+    [Parameter]
+    public bool EnableSelection { get; set; }
+
+    [Parameter]
+    public Func<TItem, bool>? IsSelected { get; set; }
+
+    [Parameter]
+    public EventCallback<MatchSelectionChangedEventArgs<TItem>> OnSelectionChanged { get; set; }
+
+    public sealed record MatchSelectionChangedEventArgs<T>(
+        T Item,
+        bool IsSelected);
+
+    private bool IsRowSelected(TItem row) => IsSelected?.Invoke(row) ?? false;
+
+    private async Task OnRowSelectedChangedAsync(TItem row, bool selected)
+    {
+        if (!OnSelectionChanged.HasDelegate)
+        {
+            return;
+        }
+
+        await OnSelectionChanged.InvokeAsync(new MatchSelectionChangedEventArgs<TItem>(row, selected));
+    }
 
     private static string FormatTeamSizes(int? team1PlayerCount, int? team2PlayerCount)
     {

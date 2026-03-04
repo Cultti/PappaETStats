@@ -1,0 +1,566 @@
+@page "/matches/combined"
+@using Microsoft.EntityFrameworkCore
+@using PappaETStats.Server.Data
+@using PappaETStats.Server.Components.Shared
+@inject IDbContextFactory<StatsDbContext> DbFactory
+
+<PageTitle>Combined Results</PageTitle>
+
+<h1>Combined Results</h1>
+
+@if (_loadError is not null)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_loadError</MudAlert>
+}
+else if (_isLoading)
+{
+    <p><em>Loadingâ€¦</em></p>
+}
+else if (_selectedMatchIds.Count == 0)
+{
+    <MudText Typo="Typo.body1">Select one or more matches on the matches page first.</MudText>
+}
+else
+{
+    <MudGrid Spacing="3">
+        <MudItem xs="12">
+            @if (_players.Count == 0)
+            {
+                <MudText Typo="Typo.body2">No players found in selected matches.</MudText>
+            }
+            else
+            {
+                <MudSwitch T="bool"
+                           Class="mb-3"
+                           Color="Color.Primary"
+                           Label="Show teams"
+                           @bind-Value="_showTeams" />
+
+                @if (_showTeams && _team1Players.Count > 0)
+                {
+                    <MudText Typo="Typo.h6" Class="mb-2">Team 1</MudText>
+                    <PlayerStatsGrid Players="_team1Players" ShowGames="true" ShowTeamStats="true" />
+                }
+
+                @if (_showTeams && _team2Players.Count > 0)
+                {
+                    <MudText Typo="Typo.h6" Class="mt-4 mb-2">Team 2</MudText>
+                    <PlayerStatsGrid Players="_team2Players" ShowGames="true" ShowTeamStats="true" />
+                }
+
+                @if (_showTeams && _unassignedPlayers.Count > 0)
+                {
+                    <MudText Typo="Typo.h6" Class="mt-4 mb-2">Unassigned</MudText>
+                    <PlayerStatsGrid Players="_unassignedPlayers" ShowGames="true" ShowTeamStats="true" />
+                }
+
+                @if (!_showTeams)
+                {
+                    <PlayerStatsGrid Players="_players" ShowGames="true" ShowTeamStats="true" />
+                }
+            }
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudText Typo="Typo.h6">Selected matches (@_selectedMatchIds.Count)</MudText>
+            <MatchListTable Items="_selectedMatches"
+                            GetMatchId="@(m => m.MatchId)"
+                            GetRound1StartUnix="@(m => m.Round1StartUnix)"
+                            GetMapName="@(m => m.MapName)"
+                            GetServerName="@(m => m.ServerName)"
+                            GetTeam1PlayerCount="@(m => m.Team1PlayerCount)"
+                            GetTeam2PlayerCount="@(m => m.Team2PlayerCount)"
+                            GetTimeText="@(m => m.TimeText)"
+                            ShowPager="false"
+                            Dense="true" />
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "id")]
+    public string[]? Id { get; set; }
+
+    private bool _isLoading = true;
+    private string? _loadError;
+    private readonly List<Guid> _selectedMatchIds = [];
+    private List<MatchRow> _selectedMatches = [];
+    private List<PlayerStatsGridRow> _players = [];
+    private List<PlayerStatsGridRow> _team1Players = [];
+    private List<PlayerStatsGridRow> _team2Players = [];
+    private List<PlayerStatsGridRow> _unassignedPlayers = [];
+    private bool _showTeams = true;
+
+    private sealed record MatchRow(
+        Guid MatchId,
+        long? Round1StartUnix,
+        DateTime IngestedAtUtc,
+        string? MapName,
+        string? ServerName,
+        int? Team1PlayerCount,
+        int? Team2PlayerCount,
+        string TimeText);
+
+    private sealed record WeaponStatRoundRow(
+        string GuidLower,
+        Guid MatchId,
+        int RoundNumber,
+        int Weapon,
+        int Hits,
+        int Atts,
+        int Kills,
+        int Deaths,
+        int Headshots);
+
+    private sealed record WeaponTotals(
+        int Kills,
+        int Deaths,
+        int Headshots,
+        int Revives);
+
+    private sealed record WeaponSummary(
+        WeaponTotals Totals,
+        IReadOnlyList<PlayerWeaponStatRow> Rows);
+
+    private sealed record PlayerTeamRow(
+        string GuidLower,
+        long? RoundStartUnix,
+        DateTime IngestedAtUtc,
+        int RoundNumber,
+        int Team);
+
+    private sealed record ClassStatAggregateRow(
+        string GuidLower,
+        int ClassId,
+        long Ms);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _isLoading = true;
+        _loadError = null;
+        _selectedMatchIds.Clear();
+        _selectedMatches = [];
+        _players = [];
+        _team1Players = [];
+        _team2Players = [];
+        _unassignedPlayers = [];
+
+        try
+        {
+            if (Id is not null)
+            {
+                foreach (var raw in Id)
+                {
+                    if (Guid.TryParse(raw, out var parsed) && !_selectedMatchIds.Contains(parsed))
+                    {
+                        _selectedMatchIds.Add(parsed);
+                    }
+                }
+            }
+
+            if (_selectedMatchIds.Count == 0)
+            {
+                return;
+            }
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var matchIds = _selectedMatchIds.ToList();
+
+            var matchesById = await db.Matches
+                .AsNoTracking()
+                .Where(m => matchIds.Contains(m.Id))
+                .Select(m => new { m.Id, m.MapName, m.ServerName })
+                .ToDictionaryAsync(x => x.Id);
+
+            var rounds = await db.MatchRounds
+                .AsNoTracking()
+                .Where(r => matchIds.Contains(r.MatchId) && (r.RoundNumber == 1 || r.RoundNumber == 2))
+                .Select(r => new { r.Id, r.MatchId, r.RoundNumber, r.IngestedAtUtc, r.NextTimeLimit, r.RoundStartUnix })
+                .ToListAsync();
+
+            var roundIds = rounds.Select(r => r.Id).Distinct().ToList();
+            var sides = await db.MatchSides
+                .AsNoTracking()
+                .Where(s => roundIds.Contains(s.MatchRoundId))
+                .Select(s => new { s.MatchRoundId, s.Team, s.PlayerCount })
+                .ToListAsync();
+
+            var sideCountsByRoundId = sides
+                .GroupBy(s => s.MatchRoundId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => new
+                    {
+                        Team1 = (int?)g.Where(x => x.Team == 1).Select(x => x.PlayerCount).FirstOrDefault(),
+                        Team2 = (int?)g.Where(x => x.Team == 2).Select(x => x.PlayerCount).FirstOrDefault(),
+                    });
+
+            var roundsByMatch = rounds
+                .GroupBy(r => r.MatchId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => new
+                    {
+                        Round1 = g.FirstOrDefault(x => x.RoundNumber == 1),
+                        Round2 = g.FirstOrDefault(x => x.RoundNumber == 2),
+                    });
+
+            _selectedMatches = [];
+            foreach (var matchId in matchIds)
+            {
+                if (!matchesById.TryGetValue(matchId, out var mi))
+                {
+                    continue;
+                }
+
+                roundsByMatch.TryGetValue(matchId, out var ri);
+                var r1 = ri?.Round1;
+                var r2 = ri?.Round2;
+
+                var round1StartUnix = r1 is null ? (long?)null : r1.RoundStartUnix;
+                var ingestedAt = (r2?.IngestedAtUtc ?? r1?.IngestedAtUtc) ?? DateTime.MinValue;
+                var timeText = $"{(r1?.NextTimeLimit ?? "-")} / {(r2?.NextTimeLimit ?? "-")}";
+
+                var teamsFromRoundId = (r2?.Id ?? r1?.Id) ?? Guid.Empty;
+                sideCountsByRoundId.TryGetValue(teamsFromRoundId, out var teamCounts);
+                var team1Count = teamCounts?.Team1;
+                var team2Count = teamCounts?.Team2;
+
+                _selectedMatches.Add(new MatchRow(matchId, round1StartUnix, ingestedAt, mi.MapName, mi.ServerName, team1Count, team2Count, timeText));
+            }
+
+            _selectedMatches = _selectedMatches
+                .OrderByDescending(m => m.Round1StartUnix ?? 0)
+                .ThenByDescending(m => m.IngestedAtUtc)
+                .ToList();
+
+            var playerCoreRows = await (
+                from p in db.MatchPlayers.AsNoTracking()
+                join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
+                join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
+                where matchIds.Contains(r.MatchId)
+                      && p.Guid != null
+                      && p.Guid != ""
+                select new
+                {
+                    GuidLower = p.Guid.ToLower(),
+                    GuidRaw = p.Guid,
+                    p.Name,
+                    r.MatchId,
+                    r.RoundStartUnix,
+                    r.IngestedAtUtc,
+                    r.RoundNumber,
+                    p.Team,
+                    p.DamageGiven,
+                    p.DamageReceived,
+                    p.TeamDamageGiven,
+                    p.TeamDamageReceived,
+                    p.TeamKills,
+                    p.Gibs,
+                    p.SelfKills,
+                }
+            ).ToListAsync();
+
+            var playerTeamRows = playerCoreRows
+                .Select(x => new PlayerTeamRow(
+                    x.GuidLower,
+                    x.RoundStartUnix,
+                    x.IngestedAtUtc,
+                    x.RoundNumber,
+                    x.Team))
+                .ToList();
+
+            var classStatRows = await (
+                from cs in db.MatchPlayerClassStats.AsNoTracking()
+                join p in db.MatchPlayers.AsNoTracking() on cs.MatchPlayerId equals p.Id
+                join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
+                join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
+                where matchIds.Contains(r.MatchId)
+                      && p.Guid != null
+                      && p.Guid != ""
+                group cs by new { GuidLower = p.Guid.ToLower(), cs.ClassId } into g
+                select new ClassStatAggregateRow(
+                    g.Key.GuidLower,
+                    g.Key.ClassId,
+                    g.Sum(x => x.Ms))
+            ).ToListAsync();
+
+            var weaponRoundRows = await (
+                from ws in db.MatchPlayerWeaponStats.AsNoTracking()
+                join p in db.MatchPlayers.AsNoTracking() on ws.MatchPlayerId equals p.Id
+                join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
+                join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
+                where matchIds.Contains(r.MatchId)
+                      && p.Guid != null
+                      && p.Guid != ""
+                group ws by new { GuidLower = p.Guid.ToLower(), r.MatchId, r.RoundNumber, ws.Weapon } into g
+                select new WeaponStatRoundRow(
+                    g.Key.GuidLower,
+                    g.Key.MatchId,
+                    g.Key.RoundNumber,
+                    g.Key.Weapon,
+                    g.Sum(x => x.Hits),
+                    g.Sum(x => x.Atts),
+                    g.Sum(x => x.Kills),
+                    g.Sum(x => x.Deaths),
+                    g.Sum(x => x.Headshots))
+            ).ToListAsync();
+
+            var weaponSummaryByGuid = BuildWeaponSummaryByGuid(weaponRoundRows);
+            var firstSeenTeamByGuid = BuildFirstSeenOverallTeamByGuid(playerTeamRows);
+            var classStatsByGuid = classStatRows
+                .Where(x => x.Ms > 0)
+                .GroupBy(x => x.GuidLower)
+                .ToDictionary(
+                    g => g.Key,
+                    g => (IReadOnlyList<PlayerClassStatRow>)g
+                        .OrderBy(x => x.ClassId)
+                        .Select(x => new PlayerClassStatRow(ClassName(x.ClassId), FormatDurationMs(x.Ms)))
+                        .ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            _players = playerCoreRows
+                .GroupBy(x => x.GuidLower)
+                .Select(g =>
+                {
+                    var games = g.Select(x => x.MatchId).Distinct().Count();
+                    var latestName = g
+                        .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+                        .OrderByDescending(x => x.RoundStartUnix)
+                        .ThenByDescending(x => x.IngestedAtUtc)
+                        .Select(x => x.Name!)
+                        .FirstOrDefault();
+
+                    var guid = g.Select(x => x.GuidRaw).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? g.Key;
+                    var displayName = string.IsNullOrWhiteSpace(latestName) ? guid : latestName;
+                    var damageGiven = g.Sum(x => x.DamageGiven);
+                    var damageReceived = g.Sum(x => x.DamageReceived);
+                    var teamDamageGiven = g.Sum(x => x.TeamDamageGiven);
+                    var teamDamageReceived = g.Sum(x => x.TeamDamageReceived);
+                    var teamKills = g.Sum(x => x.TeamKills);
+                    var gibs = g.Sum(x => x.Gibs);
+                    var selfKills = g.Sum(x => x.SelfKills);
+
+                    var weaponSummary = weaponSummaryByGuid.TryGetValue(g.Key, out var ws)
+                        ? ws
+                        : new WeaponSummary(new WeaponTotals(0, 0, 0, 0), []);
+                    var classStats = classStatsByGuid.TryGetValue(g.Key, out var cls)
+                        ? cls
+                        : [];
+
+                    return new PlayerStatsGridRow
+                    {
+                        Guid = guid,
+                        Name = displayName,
+                        Games = games,
+                        DamageGiven = damageGiven,
+                        DamageReceived = damageReceived,
+                        TeamDamageGiven = teamDamageGiven,
+                        TeamDamageReceived = teamDamageReceived,
+                        Gibs = gibs,
+                        SelfKills = selfKills,
+                        TeamKills = teamKills,
+                        WeaponStats = weaponSummary.Rows,
+                        ClassStats = classStats,
+                    };
+                })
+                .OrderByDescending(x => x.Games)
+                .ThenByDescending(x => x.WeaponStats.Sum(ws => ws.Kills))
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            _team1Players = _players
+                .Where(p => firstSeenTeamByGuid.TryGetValue((p.Guid ?? string.Empty).ToLowerInvariant(), out var team) && team == 1)
+                .ToList();
+            _team2Players = _players
+                .Where(p => firstSeenTeamByGuid.TryGetValue((p.Guid ?? string.Empty).ToLowerInvariant(), out var team) && team == 2)
+                .ToList();
+            _unassignedPlayers = _players
+                .Where(p => !firstSeenTeamByGuid.TryGetValue((p.Guid ?? string.Empty).ToLowerInvariant(), out var team) || team is not (1 or 2))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static Dictionary<string, WeaponSummary> BuildWeaponSummaryByGuid(List<WeaponStatRoundRow> weaponRoundRows)
+    {
+        static WeaponStatRoundRow Add(WeaponStatRoundRow a, WeaponStatRoundRow b)
+            => new(
+                a.GuidLower,
+                a.MatchId,
+                a.RoundNumber,
+                a.Weapon,
+                a.Hits + b.Hits,
+                a.Atts + b.Atts,
+                a.Kills + b.Kills,
+                a.Deaths + b.Deaths,
+                a.Headshots + b.Headshots);
+
+        static bool NonDecreasing(WeaponStatRoundRow prev, WeaponStatRoundRow next)
+            => next.Hits >= prev.Hits
+               && next.Atts >= prev.Atts
+               && next.Kills >= prev.Kills
+               && next.Deaths >= prev.Deaths
+               && next.Headshots >= prev.Headshots;
+
+        var summaryByGuid = new Dictionary<string, WeaponSummary>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var guidGroup in weaponRoundRows.GroupBy(r => r.GuidLower))
+        {
+            var perWeaponTotals = new Dictionary<int, WeaponStatRoundRow>();
+
+            foreach (var matchGroup in guidGroup.GroupBy(r => r.MatchId))
+            {
+                var roundGroups = matchGroup
+                    .GroupBy(r => r.RoundNumber)
+                    .OrderBy(g => g.Key)
+                    .Select(g => new { Round = g.Key, Rows = g.ToList() })
+                    .ToList();
+
+                if (roundGroups.Count == 0)
+                {
+                    continue;
+                }
+
+                var seemsCumulative = false;
+                if (roundGroups.Count >= 2)
+                {
+                    var byRoundWeapon = matchGroup.ToDictionary(x => (x.RoundNumber, x.Weapon), x => x);
+
+                    var checks = 0;
+                    var ok = 0;
+                    for (var i = 1; i < roundGroups.Count; i++)
+                    {
+                        var prevRound = roundGroups[i - 1].Round;
+                        foreach (var next in roundGroups[i].Rows)
+                        {
+                            if (byRoundWeapon.TryGetValue((prevRound, next.Weapon), out var prev))
+                            {
+                                checks++;
+                                if (NonDecreasing(prev, next))
+                                {
+                                    ok++;
+                                }
+                            }
+                        }
+                    }
+
+                    seemsCumulative = checks > 0 && (double)ok / checks >= 0.80;
+                }
+
+                Dictionary<int, WeaponStatRoundRow> perMatchByWeapon;
+                if (seemsCumulative)
+                {
+                    var latestRows = roundGroups[^1].Rows;
+                    perMatchByWeapon = latestRows
+                        .GroupBy(x => x.Weapon)
+                        .ToDictionary(g => g.Key, g => g.Aggregate((acc, x) => Add(acc, x)));
+                }
+                else
+                {
+                    perMatchByWeapon = matchGroup
+                        .GroupBy(x => x.Weapon)
+                        .ToDictionary(g => g.Key, g => g.Aggregate((acc, x) => Add(acc, x)));
+                }
+
+                foreach (var ws in perMatchByWeapon.Values)
+                {
+                    if (!perWeaponTotals.TryGetValue(ws.Weapon, out var existing))
+                    {
+                        perWeaponTotals[ws.Weapon] = ws;
+                        continue;
+                    }
+
+                    perWeaponTotals[ws.Weapon] = Add(existing, ws);
+                }
+            }
+
+            var weaponRows = perWeaponTotals.Values
+                .Select(ws => new PlayerWeaponStatRow(ws.Weapon, ws.Hits, ws.Atts, ws.Kills, ws.Deaths, ws.Headshots))
+                .Where(ws => ws.Hits != 0 || ws.Atts != 0 || ws.Kills != 0 || ws.Deaths != 0 || ws.Headshots != 0)
+                .OrderByDescending(ws => ws.Kills)
+                .ThenBy(ws => ws.Weapon)
+                .ToList();
+
+            var totals = new WeaponTotals(
+                Kills: weaponRows.Where(ws => ws.Weapon != 27).Sum(ws => ws.Kills),
+                Deaths: weaponRows.Where(ws => ws.Weapon != 27).Sum(ws => ws.Deaths),
+                Headshots: weaponRows.Where(ws => ws.Weapon != 27).Sum(ws => ws.Headshots),
+                Revives: weaponRows.Where(ws => ws.Weapon == 27).Sum(ws => ws.Hits));
+
+            summaryByGuid[guidGroup.Key] = new WeaponSummary(totals, weaponRows);
+        }
+
+        return summaryByGuid;
+    }
+
+    private static Dictionary<string, int> BuildFirstSeenOverallTeamByGuid(List<PlayerTeamRow> teamRows)
+    {
+        return teamRows
+            .GroupBy(x => x.GuidLower)
+            .Select(g =>
+            {
+                var first = g
+                    .OrderBy(x => x.RoundStartUnix ?? long.MaxValue)
+                    .ThenBy(x => x.IngestedAtUtc)
+                    .ThenBy(x => x.RoundNumber)
+                    .First();
+
+                return new
+                {
+                    g.Key,
+                    Team = MapToOverallTeam(first.RoundNumber, first.Team),
+                };
+            })
+            .ToDictionary(x => x.Key, x => x.Team, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static int MapToOverallTeam(int roundNumber, int teamId)
+    {
+        if (roundNumber == 2)
+        {
+            return teamId switch
+            {
+                1 => 2,
+                2 => 1,
+                _ => teamId,
+            };
+        }
+
+        return teamId;
+    }
+
+    private static string ClassName(int classId) => classId switch
+    {
+        0 => "Soldier",
+        1 => "Medic",
+        2 => "Engineer",
+        3 => "Fieldop",
+        4 => "Covert",
+        _ => $"Class {classId}",
+    };
+
+    private static string FormatDurationMs(long ms)
+    {
+        if (ms <= 0)
+        {
+            return "0:00";
+        }
+
+        var ts = TimeSpan.FromMilliseconds(ms);
+        if (ts.TotalHours >= 1)
+        {
+            return $"{(int)ts.TotalHours}:{ts.Minutes:00}:{ts.Seconds:00}";
+        }
+
+        return $"{(int)ts.TotalMinutes}:{ts.Seconds:00}";
+    }
+}
