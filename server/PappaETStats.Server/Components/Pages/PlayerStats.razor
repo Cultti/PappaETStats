@@ -30,7 +30,9 @@ else
             }
             else
             {
-                <EtColoredText Text="@_vm.Nemesis.DisplayName" />
+                <MudLink Href="@($"/player/{System.Uri.EscapeDataString(_vm.Nemesis.Guid)}")" Underline="Underline.Always">
+                    <EtColoredText Text="@_vm.Nemesis.DisplayName" />
+                </MudLink>
             }
         </MudText>
 
@@ -57,7 +59,7 @@ else
 
         <MudGrid>
             <MudItem xs="12" md="6">
-                <MudText Typo="Typo.h6">Aggregated stats (all rounds)</MudText>
+                <MudText Typo="Typo.h6">Aggregated stats</MudText>
                 <MudSimpleTable Dense="true" Style="width:100%">
                     <thead>
                         <tr>
