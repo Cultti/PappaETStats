@@ -206,7 +206,7 @@ else
                   && p.Guid != ""
             select new
             {
-                GuidLower = p.Guid.ToLower(),
+                GuidLower = p.Guid,
                 p.Name,
                 r.MatchId,
                 r.RoundStartUnix,

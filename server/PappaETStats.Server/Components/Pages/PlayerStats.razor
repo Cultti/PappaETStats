@@ -246,7 +246,7 @@ else
             return;
         }
 
-        var playerGuidLower = playerGuid.ToLowerInvariant();
+        var playerGuidUpper = playerGuid.ToUpperInvariant();
 
         try
         {
@@ -254,7 +254,7 @@ else
 
             var nickRows = await db.MatchPlayers
                 .AsNoTracking()
-                .Where(p => !string.IsNullOrWhiteSpace(p.Guid) && p.Guid.ToLower() == playerGuidLower)
+                .Where(p => p.Guid == playerGuidUpper)
                 .Where(p => !string.IsNullOrWhiteSpace(p.Name))
                 .Select(p => p.Name)
                 .ToListAsync();
@@ -269,31 +269,31 @@ else
             // Nemesis = player who has killed this player the most (based on obituaries).
             var nemesisAgg = await db.MatchObituaries
                 .AsNoTracking()
-                .Where(o => !string.IsNullOrWhiteSpace(o.TargetGuid) && o.TargetGuid.ToLower() == playerGuidLower)
-                .Where(o => !string.IsNullOrWhiteSpace(o.AttackerGuid) && o.AttackerGuid.ToLower() != playerGuidLower)
-                .GroupBy(o => o.AttackerGuid!.ToLower())
-                .Select(g => new { GuidLower = g.Key, Kills = g.Count() })
+                .Where(o => o.TargetGuid == playerGuidUpper)
+                .Where(o => o.AttackerGuid != null && o.AttackerGuid != playerGuidUpper)
+                .GroupBy(o => o.AttackerGuid!)
+                .Select(g => new { Guid = g.Key, Kills = g.Count() })
                 .OrderByDescending(x => x.Kills)
-                .ThenBy(x => x.GuidLower)
+                .ThenBy(x => x.Guid)
                 .FirstOrDefaultAsync();
 
             NemesisRow? nemesis = null;
-            if (nemesisAgg is not null && !string.IsNullOrWhiteSpace(nemesisAgg.GuidLower))
+            if (nemesisAgg is not null && !string.IsNullOrWhiteSpace(nemesisAgg.Guid))
             {
                 var nemesisName = await (
                     from p in db.MatchPlayers.AsNoTracking()
                     join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
                     join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
                     where !string.IsNullOrWhiteSpace(p.Guid)
-                          && p.Guid.ToLower() == nemesisAgg.GuidLower
+                          && p.Guid == nemesisAgg.Guid
                           && !string.IsNullOrWhiteSpace(p.Name)
                     orderby r.IngestedAtUtc descending, r.RoundStartUnix descending
                     select p.Name
                 ).FirstOrDefaultAsync();
 
                 nemesis = new NemesisRow(
-                    Guid: nemesisAgg.GuidLower,
-                    DisplayName: string.IsNullOrWhiteSpace(nemesisName) ? nemesisAgg.GuidLower : nemesisName);
+                    Guid: nemesisAgg.Guid,
+                    DisplayName: string.IsNullOrWhiteSpace(nemesisName) ? nemesisAgg.Guid : nemesisName);
             }
 
             // Any-round match ids for link list.
@@ -301,7 +301,7 @@ else
                 from p in db.MatchPlayers.AsNoTracking()
                 join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
                 join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
-                where !string.IsNullOrWhiteSpace(p.Guid) && p.Guid.ToLower() == playerGuidLower
+                where p.Guid == playerGuidUpper
                 select r.MatchId
             )
             .Distinct()
@@ -312,8 +312,7 @@ else
                 from p in db.MatchPlayers.AsNoTracking()
                 join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
                 join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
-                where !string.IsNullOrWhiteSpace(p.Guid)
-                      && p.Guid.ToLower() == playerGuidLower
+                where p.Guid == playerGuidUpper
                 select new
                 {
                     r.MatchId,
@@ -354,8 +353,7 @@ else
                 join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
                 join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
                 where matchIdsAny.Contains(r.MatchId)
-                      && !string.IsNullOrWhiteSpace(p.Guid)
-                      && p.Guid.ToLower() == playerGuidLower
+                      && p.Guid == playerGuidUpper
                 group ws by new { r.MatchId, r.RoundNumber, ws.Weapon } into g
                 select new WeaponStatRoundRow(
                     g.Key.MatchId,
@@ -560,7 +558,7 @@ else
 
             _vm = new ViewModel
             {
-                PlayerGuid = playerGuid,
+                PlayerGuid = playerGuidUpper,
                 DisplayName = displayName,
                 Nicknames = nicknames,
                 Nemesis = nemesis,

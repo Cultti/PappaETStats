@@ -550,12 +550,22 @@ public static class IngestEndpoints
 
         foreach (var o in dto.Obituaries ?? [])
         {
+            static string? NormGuidOrNull(string? value)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return null;
+                }
+
+                return value.Trim().ToUpperInvariant();
+            }
+
             round.Obituaries.Add(new MatchObituary
             {
                 Id = Guid.NewGuid(),
                 TimestampMs = o.Timestamp,
-                TargetGuid = o.Target,
-                AttackerGuid = o.Attacker,
+                TargetGuid = NormGuidOrNull(o.Target),
+                AttackerGuid = NormGuidOrNull(o.Attacker),
                 MeansOfDeath = o.MeansOfDeath,
                 AttackerRespawnTime = o.AttackerRespawnTime,
                 VictimRespawnTime = o.VictimRespawnTime,

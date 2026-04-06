@@ -244,7 +244,7 @@ else
                       && p.Guid != ""
                 select new
                 {
-                    GuidLower = p.Guid.ToLower(),
+                    GuidLower = p.Guid,
                     GuidRaw = p.Guid,
                     p.Name,
                     r.MatchId,
@@ -280,7 +280,7 @@ else
                 where matchIds.Contains(r.MatchId)
                       && p.Guid != null
                       && p.Guid != ""
-                group cs by new { GuidLower = p.Guid.ToLower(), cs.ClassId } into g
+                    group cs by new { GuidLower = p.Guid, cs.ClassId } into g
                 select new ClassStatAggregateRow(
                     g.Key.GuidLower,
                     g.Key.ClassId,
@@ -295,7 +295,7 @@ else
                 where matchIds.Contains(r.MatchId)
                       && p.Guid != null
                       && p.Guid != ""
-                group ws by new { GuidLower = p.Guid.ToLower(), r.MatchId, r.RoundNumber, ws.Weapon } into g
+                    group ws by new { GuidLower = p.Guid, r.MatchId, r.RoundNumber, ws.Weapon } into g
                 select new WeaponStatRoundRow(
                     g.Key.GuidLower,
                     g.Key.MatchId,
