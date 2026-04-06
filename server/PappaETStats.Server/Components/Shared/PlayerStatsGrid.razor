@@ -27,6 +27,7 @@
             <col style="width: var(--pappa-col-2);" />
             <col style="width: var(--pappa-col-2);" />
         }
+        <col style="width: var(--pappa-col-5);" />
         <col style="width: var(--pappa-col-2);" />
     </ColGroup>
 
@@ -124,6 +125,10 @@
                 </FooterTemplate>
             </PropertyColumn>
         }
+
+        <TemplateColumn T="PlayerStatsGridRow" Title="TP" HeaderClass="pappa-col-num pappa-col-5" CellClass="pappa-col-num pappa-col-5">
+            <CellTemplate>@context.Item.TimePlayedPercent.ToString("00.00", System.Globalization.CultureInfo.InvariantCulture)</CellTemplate>
+        </TemplateColumn>
 
         <TemplateColumn T="PlayerStatsGridRow" Title="Rev" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
             <CellTemplate>@context.Item.WeaponStats.Where(s => s.Weapon == 27).Sum(s => s.Hits)</CellTemplate>

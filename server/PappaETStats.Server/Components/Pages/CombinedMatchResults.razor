@@ -252,6 +252,7 @@ else
                     r.IngestedAtUtc,
                     r.RoundNumber,
                     p.Team,
+                    p.TimePlayedPercent,
                     p.DamageGiven,
                     p.DamageReceived,
                     p.TeamDamageGiven,
@@ -341,6 +342,7 @@ else
                     var teamKills = g.Sum(x => x.TeamKills);
                     var gibs = g.Sum(x => x.Gibs);
                     var selfKills = g.Sum(x => x.SelfKills);
+                    var timePlayedPercent = g.Average(x => x.TimePlayedPercent);
 
                     var weaponSummary = weaponSummaryByGuid.TryGetValue(g.Key, out var ws)
                         ? ws
@@ -354,6 +356,7 @@ else
                         Guid = guid,
                         Name = displayName,
                         Games = games,
+                        TimePlayedPercent = timePlayedPercent,
                         DamageGiven = damageGiven,
                         DamageReceived = damageReceived,
                         TeamDamageGiven = teamDamageGiven,

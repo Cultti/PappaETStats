@@ -679,6 +679,7 @@ else
         {
             Guid = p.Guid,
             Name = p.Name,
+            TimePlayedPercent = p.TimePlayedPercent,
             DamageGiven = p.DamageGiven,
             DamageReceived = p.DamageReceived,
             TeamDamageGiven = p.TeamDamageGiven,
@@ -739,6 +740,9 @@ else
         public Guid Id { get; set; }
         public string Guid { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
+
+        public double TimePlayedPercentSum { get; set; }
+        public int TimePlayedPercentCount { get; set; }
 
         public int DamageGiven { get; set; }
         public int DamageReceived { get; set; }
@@ -815,6 +819,12 @@ else
                 acc.TeamKills += p.TeamKills;
                 acc.TeamGibs += p.TeamGibs;
 
+                if (p.TimePlayedPercent > 0)
+                {
+                    acc.TimePlayedPercentSum += p.TimePlayedPercent;
+                    acc.TimePlayedPercentCount++;
+                }
+
                 foreach (var ws in p.WeaponStats)
                 {
                     if (!acc.WeaponStatsByWeapon.TryGetValue(ws.Weapon, out var existing))
@@ -862,6 +872,10 @@ else
 
         MatchPlayer ToPlayer(OverallPlayerAccumulator acc)
         {
+            var timePlayedPercent = acc.TimePlayedPercentCount <= 0
+                ? 0
+                : acc.TimePlayedPercentSum / acc.TimePlayedPercentCount;
+
             var weaponStats = acc.WeaponStatsByWeapon.Values
                 .Select(ws =>
                 {
@@ -895,7 +909,7 @@ else
                 Team = 0,
                 Rounds = 0,
                 Xp = 0,
-                TimePlayedPercent = 0,
+                TimePlayedPercent = timePlayedPercent,
                 DamageGiven = acc.DamageGiven,
                 DamageReceived = acc.DamageReceived,
                 TeamDamageGiven = acc.TeamDamageGiven,

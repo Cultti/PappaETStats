@@ -18,6 +18,8 @@ public sealed class PlayerStatsGridRow
     public string Name { get; init; } = string.Empty;
     public int Games { get; init; }
 
+    public double TimePlayedPercent { get; init; }
+
     public int DamageGiven { get; init; }
     public int DamageReceived { get; init; }
     public int TeamDamageGiven { get; init; }

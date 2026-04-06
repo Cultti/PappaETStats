@@ -62,7 +62,7 @@ public static class TeamBalanceEndpoints
             return authResult;
         }
 
-        var sigmaMultiplier = body.SigmaMultiplier ?? 3.0;
+        var sigmaMultiplier = body.SigmaMultiplier ?? 2.0;
         if (sigmaMultiplier <= 0.0 || double.IsNaN(sigmaMultiplier) || double.IsInfinity(sigmaMultiplier))
         {
             return Results.BadRequest(new { error = "sigmaMultiplier must be a positive number" });
