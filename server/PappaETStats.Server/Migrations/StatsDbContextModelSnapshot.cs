@@ -111,11 +111,7 @@ namespace PappaETStats.Server.Migrations
 
                     b.HasIndex("MatchRoundId");
 
-                    b.HasIndex("TargetGuid");
-
-                    b.HasIndex("TargetGuid", "AttackerGuid");
-
-                    b.ToTable("MatchObituaries");
+                    b.ToTable("MatchObituaries", (string)null);
                 });
 
             modelBuilder.Entity("PappaETStats.Server.Domain.MatchPlayer", b =>
@@ -178,11 +174,9 @@ namespace PappaETStats.Server.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Guid");
-
                     b.HasIndex("MatchSideId");
 
-                    b.ToTable("MatchPlayers");
+                    b.ToTable("MatchPlayers", (string)null);
                 });
 
             modelBuilder.Entity("PappaETStats.Server.Domain.MatchPlayerClassStat", b =>
@@ -204,7 +198,7 @@ namespace PappaETStats.Server.Migrations
 
                     b.HasIndex("MatchPlayerId");
 
-                    b.ToTable("MatchPlayerClassStats");
+                    b.ToTable("MatchPlayerClassStats", (string)null);
                 });
 
             modelBuilder.Entity("PappaETStats.Server.Domain.MatchPlayerWeaponStat", b =>
@@ -238,7 +232,7 @@ namespace PappaETStats.Server.Migrations
 
                     b.HasIndex("MatchPlayerId");
 
-                    b.ToTable("MatchPlayerWeaponStats");
+                    b.ToTable("MatchPlayerWeaponStats", (string)null);
                 });
 
             modelBuilder.Entity("PappaETStats.Server.Domain.MatchRound", b =>
@@ -292,7 +286,7 @@ namespace PappaETStats.Server.Migrations
                     b.HasIndex("MatchId", "RoundNumber")
                         .IsUnique();
 
-                    b.ToTable("MatchRounds");
+                    b.ToTable("MatchRounds", (string)null);
                 });
 
             modelBuilder.Entity("PappaETStats.Server.Domain.MatchSide", b =>
@@ -347,7 +341,7 @@ namespace PappaETStats.Server.Migrations
 
                     b.HasIndex("MatchRoundId");
 
-                    b.ToTable("MatchSides");
+                    b.ToTable("MatchSides", (string)null);
                 });
 
             modelBuilder.Entity("PappaETStats.Server.Domain.Player", b =>
@@ -364,7 +358,7 @@ namespace PappaETStats.Server.Migrations
 
                     b.HasKey("Guid");
 
-                    b.ToTable("Players");
+                    b.ToTable("Players", (string)null);
                 });
 
             modelBuilder.Entity("PappaETStats.Server.Domain.MatchObituary", b =>
