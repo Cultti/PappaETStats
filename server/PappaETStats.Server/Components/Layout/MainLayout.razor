@@ -1,0 +1,79 @@
+﻿@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Hosting
+@using MudBlazor
+@inject NavigationManager Nav
+@inject IWebHostEnvironment Env
+
+<MudThemeProvider Theme="@_theme" IsDarkMode="true" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudIconButton Icon="@Icons.Material.Filled.Home" Color="Color.Inherit" Edge="Edge.Start" aria-label="Home" OnClick="GoHome" />
+        <MudText Typo="Typo.h6">
+            <MudLink Href="/" Underline="Underline.None" Color="Color.Inherit">PappaETStats</MudLink>
+        </MudText>
+        <MudSpacer />
+        @if (Env.IsDevelopment())
+        {
+            <MudButton Variant="Variant.Text" Color="Color.Inherit" Href="/swagger" Target="_blank">Swagger</MudButton>
+        }
+    </MudAppBar>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="pa-4">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private static readonly MudTheme _theme = new()
+    {
+        PaletteDark = new PaletteDark
+        {
+            Black = "#000000",
+            White = "#ffffff",
+
+            Background = "#0f1115",
+            Surface = "#161a22",
+            DrawerBackground = "#121620",
+            AppbarBackground = "#121620",
+
+            TextPrimary = "#e6e9ef",
+            TextSecondary = "#b5bcc9",
+            TextDisabled = "#7c8494",
+
+            Primary = "#7aa2f7",
+            Secondary = "#bb9af7",
+            Tertiary = "#2ac3de",
+            Info = "#2ac3de",
+            Success = "#9ece6a",
+            Warning = "#e0af68",
+            Error = "#f7768e",
+
+            LinesDefault = "#2a3140",
+            LinesInputs = "#2a3140",
+            Divider = "#2a3140",
+
+            TableLines = "#2a3140",
+            TableStriped = "rgba(255,255,255,0.03)",
+            TableHover = "rgba(255,255,255,0.05)",
+
+            ActionDefault = "#b5bcc9",
+            ActionDisabled = "rgba(230,233,239,0.30)",
+            ActionDisabledBackground = "rgba(230,233,239,0.08)",
+        },
+    };
+
+    private void GoHome()
+        => Nav.NavigateTo("/");
+}

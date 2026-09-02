@@ -1,0 +1,28 @@
+@using PappaETStats.Server.Util
+
+@if (_segments.Count == 0)
+{
+    <span></span>
+}
+else
+{
+    @foreach (var seg in _segments)
+    {
+        <span class="et-colored" style="color:@seg.CssColor">@seg.Text</span>
+    }
+}
+
+@code {
+    [Parameter]
+    public string? Text { get; set; }
+
+    [Parameter]
+    public string? DefaultColor { get; set; }
+
+    private IReadOnlyList<EtColorCodes.Segment> _segments = Array.Empty<EtColorCodes.Segment>();
+
+    protected override void OnParametersSet()
+    {
+        _segments = EtColorCodes.Parse(Text, DefaultColor);
+    }
+}

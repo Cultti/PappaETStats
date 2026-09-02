@@ -1,0 +1,385 @@
+@page "/"
+@page "/matches"
+@using Microsoft.EntityFrameworkCore
+@using MudBlazor
+@using PappaETStats.Server.Data
+@using PappaETStats.Server.Domain
+@using PappaETStats.Server.Components.Shared
+@inject IDbContextFactory<StatsDbContext> DbFactory
+@inject NavigationManager NavManager
+
+<PageTitle>Matches</PageTitle>
+
+<h1>Matches</h1>
+
+@if (_rows is null || _players is null)
+{
+    <p><em>Loading…</em></p>
+}
+else
+{
+    <MudGrid Spacing="3">
+        <MudItem xs="12">
+            @if (_rows.Count == 0)
+            {
+                <p>No round 2 matches ingested yet.</p>
+            }
+            else
+            {
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Disabled="@(_selectedMatchIds.Count == 0)"
+                               OnClick="NavigateToCombinedResults">
+                        Combined results (@_selectedMatchIds.Count)
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Default"
+                               Disabled="@(_selectedMatchIds.Count == 0)"
+                               OnClick="ClearSelectedMatches">
+                        Clear selection
+                    </MudButton>
+                </MudStack>
+
+                <MatchListTable Items="_rows"
+                                GetMatchId="@(r => r.MatchId)"
+                                GetRound1StartUnix="@(r => r.Round1StartUnix)"
+                                GetMapName="@(r => r.MapName)"
+                                GetServerName="@(r => r.ServerName)"
+                                GetTeam1PlayerCount="@(r => r.Team1PlayerCount)"
+                                GetTeam2PlayerCount="@(r => r.Team2PlayerCount)"
+                                GetTimeText="@(r => $"{(r.Round1NextTimeLimit ?? "-")} / {(r.Round2NextTimeLimit ?? "-")}")"
+                                EnableSelection="true"
+                                IsSelected="@(r => _selectedMatchIds.Contains(r.MatchId))"
+                                OnSelectionChanged="@((MatchListTable<Round2Row>.MatchSelectionChangedEventArgs<Round2Row> args) => OnMatchSelectionChanged(args))"
+                                Dense="true" />
+            }
+        </MudItem>
+
+        <MudItem xs="12">
+            @if (_players.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Class="mt-1">No players recorded yet.</MudText>
+            }
+            else
+            {
+                <MudTable Dense="true"
+                          Hover="true"
+                          Striped="true"
+                          Breakpoint="Breakpoint.Sm"
+                          Items="_players"
+                          Context="row"
+                          Elevation="0"
+                          RowsPerPage="25">
+                    <HeaderContent>
+                        <MudTh>Nick</MudTh>
+                        <MudTh align="Align.Right">Games</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Nick">
+                            <MudLink Href="@PlayerHref(row.Guid)" Underline="Underline.Always">
+                                <EtColoredText Text="@row.LatestName" />
+                            </MudLink>
+                        </MudTd>
+                        <MudTd DataLabel="Games" align="Align.Right">@row.Games</MudTd>
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager PageSizeOptions="PlayerPageSizeOptions" />
+                    </PagerContent>
+                </MudTable>
+            }
+        </MudItem>
+
+        <MudItem xs="12">
+            @if (_mapPieLabels.Length == 0 || _mapPieData.Length == 0)
+            {
+                <MudText Typo="Typo.body2" Class="mt-1">No maps recorded yet.</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.h6">Most popular maps</MudText>
+                <MudChart chartType="ChartType.Pie"
+                          height="320px"
+                          inputLabels="@_mapPieLabels"
+                          inputData="@_mapPieData" />
+            }
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private List<Round2Row>? _rows;
+    private List<PlayerRow>? _players;
+    private readonly HashSet<Guid> _selectedMatchIds = [];
+
+    private string[] _mapPieLabels = Array.Empty<string>();
+    private double[] _mapPieData = Array.Empty<double>();
+
+    private static readonly int[] PlayerPageSizeOptions = [10, 25, 50, 100];
+
+    private sealed record Round2Row(
+        Guid MatchId,
+        long? Round1StartUnix,
+        DateTime IngestedAtUtc,
+        string? MapName,
+        string? ServerName,
+        int? Team1PlayerCount,
+        int? Team2PlayerCount,
+        string? Round2NextTimeLimit,
+        int Round2WinnerTeam,
+        string? Round1TimeLimit,
+        string? Round1NextTimeLimit,
+        int? Round1WinnerTeam);
+
+    private sealed record PlayerRow(
+        string Guid,
+        string LatestName,
+        int Games);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var mapCounts = await db.Matches.AsNoTracking()
+            .Where(m => m.MapName != null && m.MapName != "")
+            .GroupBy(m => m.MapName!)
+            .Select(g => new { MapName = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .ToListAsync();
+
+        const int maxSlices = 8;
+        if (mapCounts.Count > maxSlices)
+        {
+            var top = mapCounts.Take(maxSlices).ToList();
+            var otherCount = mapCounts.Skip(maxSlices).Sum(x => x.Count);
+            if (otherCount > 0)
+            {
+                top.Add(new { MapName = "Other", Count = otherCount });
+            }
+
+            _mapPieLabels = top.Select(x => x.MapName).ToArray();
+            _mapPieData = top.Select(x => (double)x.Count).ToArray();
+        }
+        else
+        {
+            _mapPieLabels = mapCounts.Select(x => x.MapName).ToArray();
+            _mapPieData = mapCounts.Select(x => (double)x.Count).ToArray();
+        }
+
+        // Avoid Include cycles (Match -> Rounds -> Match ...) in no-tracking queries by
+        // projecting only the fields needed for the frontpage.
+        _rows = await (
+            from r2 in db.MatchRounds.AsNoTracking()
+            where r2.RoundNumber == 2
+            join m in db.Matches.AsNoTracking() on r2.MatchId equals m.Id
+            join s1j in db.MatchSides.AsNoTracking().Where(x => x.Team == 1) on r2.Id equals s1j.MatchRoundId into s1g
+            from s1 in s1g.DefaultIfEmpty()
+            join s2j in db.MatchSides.AsNoTracking().Where(x => x.Team == 2) on r2.Id equals s2j.MatchRoundId into s2g
+            from s2 in s2g.DefaultIfEmpty()
+            join r1 in db.MatchRounds.AsNoTracking().Where(x => x.RoundNumber == 1)
+                on r2.MatchId equals r1.MatchId into r1g
+            from r1 in r1g.DefaultIfEmpty()
+            orderby (r1 == null ? (long?)null : r1.RoundStartUnix) descending, r2.IngestedAtUtc descending
+            select new Round2Row(
+                r2.MatchId,
+                r1 != null ? r1.RoundStartUnix : (long?)null,
+                r2.IngestedAtUtc,
+                m.MapName,
+                m.ServerName,
+                s1 != null ? s1.PlayerCount : (int?)null,
+                s2 != null ? s2.PlayerCount : (int?)null,
+                r2.NextTimeLimit,
+                r2.WinnerTeam,
+                r1 != null ? r1.TimeLimit : null,
+                r1 != null ? r1.NextTimeLimit : null,
+                r1 != null ? r1.WinnerTeam : (int?)null)
+        )
+        .Take(50)
+        .ToListAsync();
+
+        var playerRowsRaw = await (
+            from p in db.MatchPlayers.AsNoTracking()
+            join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
+            join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
+            where r.RoundNumber == 2
+                  && p.Guid != null
+                  && p.Guid != ""
+            select new
+            {
+                GuidLower = p.Guid,
+                p.Name,
+                r.MatchId,
+                r.RoundStartUnix,
+                r.IngestedAtUtc,
+            }
+        ).ToListAsync();
+
+        _players = playerRowsRaw
+            .GroupBy(x => x.GuidLower)
+            .Select(g =>
+            {
+                var games = g.Select(x => x.MatchId).Distinct().Count();
+                var latestName = g
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+                    .OrderByDescending(x => x.RoundStartUnix)
+                    .ThenByDescending(x => x.IngestedAtUtc)
+                    .Select(x => x.Name!)
+                    .FirstOrDefault();
+
+                return new PlayerRow(g.Key, string.IsNullOrWhiteSpace(latestName) ? g.Key : latestName, games);
+            })
+            .OrderByDescending(x => x.Games)
+            .ThenBy(x => x.LatestName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string PlayerHref(string guid)
+        => $"/player/{Uri.EscapeDataString((guid ?? string.Empty).Trim())}";
+
+    private Task OnMatchSelectionChanged(MatchListTable<Round2Row>.MatchSelectionChangedEventArgs<Round2Row> args)
+    {
+        if (args.IsSelected)
+        {
+            _selectedMatchIds.Add(args.Item.MatchId);
+        }
+        else
+        {
+            _selectedMatchIds.Remove(args.Item.MatchId);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void ClearSelectedMatches() => _selectedMatchIds.Clear();
+
+    private void NavigateToCombinedResults()
+    {
+        if (_selectedMatchIds.Count == 0)
+        {
+            return;
+        }
+
+        var selectedInCurrentOrder = _rows is null
+            ? _selectedMatchIds
+            : _rows
+                .Where(r => _selectedMatchIds.Contains(r.MatchId))
+                .Select(r => r.MatchId);
+
+        var query = string.Join(
+            "&",
+            selectedInCurrentOrder.Select(id => $"id={Uri.EscapeDataString(id.ToString("D", System.Globalization.CultureInfo.InvariantCulture))}"));
+
+        NavManager.NavigateTo($"/matches/combined?{query}");
+    }
+
+    private static string MatchResultText(Round2Row round2)
+    {
+        if (round2.Round1WinnerTeam is null)
+        {
+            return OverallTeamName(MapToOverallTeam(2, round2.Round2WinnerTeam));
+        }
+
+        // Stopwatch draw rule: if round 2 next time equals the ORIGINAL first-round time limit,
+        // neither side set a time.
+        var baseLimit = ParseStopwatchTimeSeconds(round2.Round1TimeLimit);
+        var t2Next = ParseStopwatchTimeSeconds(round2.Round2NextTimeLimit);
+        if (baseLimit is not null && t2Next is not null)
+        {
+            if (t2Next.Value == baseLimit.Value)
+            {
+                return "Draw";
+            }
+        }
+        else if (string.Equals(Norm(round2.Round2NextTimeLimit), Norm(round2.Round1TimeLimit), StringComparison.Ordinal))
+        {
+            return "Draw";
+        }
+
+        var t1 = ParseStopwatchTimeSeconds(round2.Round1NextTimeLimit);
+        var t2 = t2Next;
+
+        if (t1 is null || t2 is null)
+        {
+            return OverallTeamName(MapToOverallTeam(2, round2.Round2WinnerTeam));
+        }
+
+        // Smaller time is better (faster). If round 2 beats the time, round 2 winner wins.
+        // If round 2 matches or is slower, round 1 winner wins.
+        if (t2.Value < t1.Value)
+        {
+            return OverallTeamName(MapToOverallTeam(2, round2.Round2WinnerTeam));
+        }
+
+        return OverallTeamName(MapToOverallTeam(1, round2.Round1WinnerTeam.Value));
+    }
+
+    private static string OverallTeamName(int teamId) => teamId switch
+    {
+        1 => "Team 1",
+        2 => "Team 2",
+        _ => $"Team {teamId}",
+    };
+
+    private static int MapToOverallTeam(int roundNumber, int teamId)
+    {
+        if (roundNumber == 2)
+        {
+            return teamId switch
+            {
+                1 => 2,
+                2 => 1,
+                _ => teamId,
+            };
+        }
+
+        return teamId;
+    }
+
+    private static string Norm(string? s) => (s ?? string.Empty).Trim();
+
+    private static int? ParseStopwatchTimeSeconds(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var v = value.Trim();
+        var dot = v.IndexOf('.');
+        if (dot >= 0)
+        {
+            v = v[..dot];
+        }
+
+        var parts = v.Split(':');
+        if (parts.Length is < 1 or > 3)
+        {
+            return null;
+        }
+
+        static bool TryParsePart(string s, out int n)
+            => int.TryParse(s.Trim(), out n) && n >= 0;
+
+        if (parts.Length == 1)
+        {
+            return TryParsePart(parts[0], out var seconds) ? seconds : null;
+        }
+
+        if (parts.Length == 2)
+        {
+            if (!TryParsePart(parts[0], out var minutes) || !TryParsePart(parts[1], out var seconds))
+            {
+                return null;
+            }
+
+            return checked(minutes * 60 + seconds);
+        }
+
+        if (!TryParsePart(parts[0], out var hours) || !TryParsePart(parts[1], out var minutes2) || !TryParsePart(parts[2], out var seconds2))
+        {
+            return null;
+        }
+
+        return checked(hours * 3600 + minutes2 * 60 + seconds2);
+    }
+}

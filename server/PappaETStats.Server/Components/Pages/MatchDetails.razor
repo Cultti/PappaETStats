@@ -1,0 +1,1075 @@
+@page "/matches/{Id:guid}"
+@using Microsoft.EntityFrameworkCore
+@using PappaETStats.Server.Data
+@using PappaETStats.Server.Domain
+@using PappaETStats.Server.Components.Shared
+@inject IDbContextFactory<StatsDbContext> DbFactory
+
+<PageTitle>Match</PageTitle>
+
+@if (_match is null)
+{
+    <p><em>Loading…</em></p>
+}
+else
+{
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudText Typo="Typo.h4">@_match.MapName <MudText Typo="Typo.subtitle1" Inline="true">(@_match.ExternalMatchId)</MudText></MudText>
+
+        <MudStack Spacing="1" Class="mt-2">
+            <MudText Typo="Typo.body1"><strong>Server:</strong> <EtColoredText Text="@_match.ServerName" /></MudText>
+            <MudText Typo="Typo.body2"><strong>Time:</strong> @(_round1?.NextTimeLimit ?? "-") / @(_round2?.NextTimeLimit ?? "-")</MudText>
+            <MudText Typo="Typo.body2"><strong>Result:</strong> @MatchResultText(_match)</MudText>
+
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.body1"><strong>Demo:</strong></MudText>
+            @if (_match.DemoZippedAtUtc is not null && !string.IsNullOrWhiteSpace(_match.DemoZipFileName))
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="@($"/api/matches/{Uri.EscapeDataString(_match.ExternalMatchId)}/demo.zip")">
+                        Download demo (zip)
+                    </MudButton>
+                    <MudText Typo="Typo.body2">@_match.DemoZipFileName</MudText>
+                </MudStack>
+            }
+            else if (_match.DemoUploadedAtUtc is not null)
+            {
+                <MudText Typo="Typo.body2">Demo uploaded; compressing…</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2">No demo uploaded for this match.</MudText>
+            }
+        </MudStack>
+    </MudPaper>
+
+    <MudTabs Class="mt-6" Rounded="true" ApplyEffectsToContainer="true" Elevation="1">
+        <MudTabPanel Text="Overall">
+            @if (_round2 is null)
+            {
+                <MudText Typo="Typo.body2">No round 2 ingested yet.</MudText>
+            }
+            else
+            {
+                @OverallContent(_match, _round2)
+            }
+        </MudTabPanel>
+
+        <MudTabPanel Text="Round 1">
+            @if (_round1 is null)
+            {
+                <MudText Typo="Typo.body2">No round 1 ingested.</MudText>
+            }
+            else
+            {
+                @RoundContent(_round1)
+            }
+        </MudTabPanel>
+
+        <MudTabPanel Text="Round 2">
+            @if (_round2 is null)
+            {
+                <MudText Typo="Typo.body2">No round 2 ingested.</MudText>
+            }
+            else
+            {
+                @RoundContent(_round2)
+            }
+        </MudTabPanel>
+    </MudTabs>
+}
+
+@code {
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private Match? _match;
+    private MatchRound? _round1;
+    private MatchRound? _round2;
+
+    private bool _round2WeaponStatsLookCumulative;
+
+    private Dictionary<string, Dictionary<int, WeaponStatView>> _round1WeaponStatsByGuid = new(StringComparer.OrdinalIgnoreCase);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var matchInfo = await db.Matches
+            .AsNoTracking()
+            .Where(m => m.Id == Id)
+            .Select(m => new
+            {
+                m.Id,
+                m.ExternalMatchId,
+                m.MapName,
+                m.Config,
+                m.ServerName,
+                m.ServerIp,
+                m.ServerPort,
+                m.DemoFileName,
+                m.DemoZipFileName,
+                m.DemoUploadedAtUtc,
+                m.DemoZippedAtUtc,
+            })
+            .FirstOrDefaultAsync();
+
+        if (matchInfo is null)
+        {
+            _match = null;
+            _round1 = null;
+            _round2 = null;
+            _round1WeaponStatsByGuid = new(StringComparer.OrdinalIgnoreCase);
+            return;
+        }
+
+        var rounds = await db.MatchRounds
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Where(r => r.MatchId == matchInfo.Id && (r.RoundNumber == 1 || r.RoundNumber == 2))
+            .Select(r => new MatchRound
+            {
+                Id = r.Id,
+                MatchId = r.MatchId,
+                Match = null!,
+                RoundNumber = r.RoundNumber,
+                DefenderTeam = r.DefenderTeam,
+                WinnerTeam = r.WinnerTeam,
+                TimeLimit = r.TimeLimit,
+                NextTimeLimit = r.NextTimeLimit,
+                RoundStartMs = r.RoundStartMs,
+                RoundEndMs = r.RoundEndMs,
+                RoundStartUnix = r.RoundStartUnix,
+                RoundEndUnix = r.RoundEndUnix,
+                IngestedAtUtc = r.IngestedAtUtc,
+                RawJson = null,
+                Sides = r.Sides.Select(s => new MatchSide
+                {
+                    Id = s.Id,
+                    MatchRoundId = s.MatchRoundId,
+                    MatchRound = null!,
+                    Team = s.Team,
+                    IsDefender = s.IsDefender,
+                    IsWinner = s.IsWinner,
+                    PlayerCount = s.PlayerCount,
+                    TotalXp = s.TotalXp,
+                    TotalDamageGiven = s.TotalDamageGiven,
+                    TotalDamageReceived = s.TotalDamageReceived,
+                    TotalTeamDamageGiven = s.TotalTeamDamageGiven,
+                    TotalTeamDamageReceived = s.TotalTeamDamageReceived,
+                    TotalGibs = s.TotalGibs,
+                    TotalSelfKills = s.TotalSelfKills,
+                    TotalTeamKills = s.TotalTeamKills,
+                    TotalTeamGibs = s.TotalTeamGibs,
+                    Players = s.Players.Select(p => new MatchPlayer
+                    {
+                        Id = p.Id,
+                        MatchSideId = p.MatchSideId,
+                        MatchSide = null!,
+                        ClientNum = p.ClientNum,
+                        Guid = p.Guid,
+                        Name = p.Name,
+                        Team = p.Team,
+                        Rounds = p.Rounds,
+                        Xp = p.Xp,
+                        TimePlayedPercent = p.TimePlayedPercent,
+                        DamageGiven = p.DamageGiven,
+                        DamageReceived = p.DamageReceived,
+                        TeamDamageGiven = p.TeamDamageGiven,
+                        TeamDamageReceived = p.TeamDamageReceived,
+                        Gibs = p.Gibs,
+                        SelfKills = p.SelfKills,
+                        TeamKills = p.TeamKills,
+                        TeamGibs = p.TeamGibs,
+                        WeaponStats = p.WeaponStats.Select(ws => new MatchPlayerWeaponStat
+                        {
+                            Id = ws.Id,
+                            MatchPlayerId = ws.MatchPlayerId,
+                            MatchPlayer = null!,
+                            Weapon = ws.Weapon,
+                            Hits = ws.Hits,
+                            Atts = ws.Atts,
+                            Kills = ws.Kills,
+                            Deaths = ws.Deaths,
+                            Headshots = ws.Headshots,
+                        }).ToList(),
+                        ClassStats = p.ClassStats.Select(cs => new MatchPlayerClassStat
+                        {
+                            Id = cs.Id,
+                            MatchPlayerId = cs.MatchPlayerId,
+                            MatchPlayer = null!,
+                            ClassId = cs.ClassId,
+                            Ms = cs.Ms,
+                        }).ToList(),
+                    }).ToList(),
+                }).ToList(),
+                Obituaries = r.Obituaries.Select(o => new MatchObituary
+                {
+                    Id = o.Id,
+                    MatchRoundId = o.MatchRoundId,
+                    MatchRound = null!,
+                    TimestampMs = o.TimestampMs,
+                    TargetGuid = o.TargetGuid,
+                    AttackerGuid = o.AttackerGuid,
+                    MeansOfDeath = o.MeansOfDeath,
+                    AttackerRespawnTime = o.AttackerRespawnTime,
+                    VictimRespawnTime = o.VictimRespawnTime,
+                }).ToList(),
+            })
+            .ToListAsync();
+
+        _match = new Match
+        {
+            Id = matchInfo.Id,
+            ExternalMatchId = matchInfo.ExternalMatchId,
+            MapName = matchInfo.MapName,
+            Config = matchInfo.Config,
+            ServerName = matchInfo.ServerName,
+            ServerIp = matchInfo.ServerIp,
+            ServerPort = matchInfo.ServerPort,
+            DemoFileName = matchInfo.DemoFileName,
+            DemoZipFileName = matchInfo.DemoZipFileName,
+            DemoUploadedAtUtc = matchInfo.DemoUploadedAtUtc,
+            DemoZippedAtUtc = matchInfo.DemoZippedAtUtc,
+            Rounds = rounds,
+        };
+
+        _round1 = rounds.FirstOrDefault(r => r.RoundNumber == 1);
+        _round2 = rounds.FirstOrDefault(r => r.RoundNumber == 2);
+
+        _round1WeaponStatsByGuid = BuildWeaponStatsByGuid(_round1);
+        _round2WeaponStatsLookCumulative = LooksCumulativeWeaponStats(_round1WeaponStatsByGuid, _round2);
+    }
+
+    private static bool LooksCumulativeWeaponStats(
+        IReadOnlyDictionary<string, Dictionary<int, WeaponStatView>> round1ByGuid,
+        MatchRound? round2)
+    {
+        if (round2 is null || round1ByGuid.Count == 0)
+        {
+            return false;
+        }
+
+        var total = 0;
+        var nonNeg = 0;
+        var positive = 0;
+
+        foreach (var p2 in round2.Sides.SelectMany(s => s.Players))
+        {
+            if (string.IsNullOrWhiteSpace(p2.Guid))
+            {
+                continue;
+            }
+
+            if (!round1ByGuid.TryGetValue(p2.Guid, out var r1Weapons))
+            {
+                continue;
+            }
+
+            foreach (var w2 in p2.WeaponStats)
+            {
+                if (!r1Weapons.TryGetValue(w2.Weapon, out var w1))
+                {
+                    continue;
+                }
+
+                total++;
+
+                var hitsDiff = w2.Hits - w1.Hits;
+                var attsDiff = w2.Atts - w1.Atts;
+                var killsDiff = w2.Kills - w1.Kills;
+                var deathsDiff = w2.Deaths - w1.Deaths;
+                var hsDiff = w2.Headshots - w1.Headshots;
+
+                if (hitsDiff >= 0 && attsDiff >= 0 && killsDiff >= 0 && deathsDiff >= 0 && hsDiff >= 0)
+                {
+                    nonNeg++;
+                }
+
+                if (hitsDiff > 0 || attsDiff > 0 || killsDiff > 0 || deathsDiff > 0 || hsDiff > 0)
+                {
+                    positive++;
+                }
+            }
+        }
+
+        if (total == 0)
+        {
+            return false;
+        }
+
+        return positive > 0 && (double)nonNeg / total >= 0.80;
+    }
+
+    private static double AccuracyPct(int hits, int atts) => atts <= 0 ? 0 : 100.0 * hits / atts;
+
+    private static readonly IReadOnlyDictionary<int, string> WeaponNames = new Dictionary<int, string>
+    {
+        [0] = "Knife",
+        [1] = "Ka-Bar",
+        [2] = "Luger",
+        [3] = "Colt",
+        [4] = "MP 40",
+        [5] = "Thompson",
+        [6] = "Sten",
+        [7] = "FG 42",
+        [8] = "Panzer",
+        [9] = "Bazooka",
+        [10] = "F.Thrower",
+        [11] = "Grenade",
+        [12] = "Mortar",
+        [13] = "Granatwerf",
+        [14] = "Dynamite",
+        [15] = "Airstrike",
+        [16] = "Artillery",
+        [17] = "Satchel",
+        [18] = "Gren.Launcher",
+        [19] = "Landmine",
+        [20] = "MG 42",
+        [21] = "Browning",
+        [22] = "Carbine",
+        [23] = "K43 Rifle",
+        [24] = "Garand",
+        [25] = "K43",
+        [26] = "MP 34",
+        [27] = "Syringe",
+    };
+
+    private static readonly IReadOnlyDictionary<int, string> ModNames = new Dictionary<int, string>
+    {
+        [0] = "Unknown",
+        [1] = "Machinegun",
+        [2] = "Browning",
+        [3] = "MG42",
+        [4] = "Grenade",
+        [5] = "Knife",
+        [6] = "Luger",
+        [7] = "Colt",
+        [8] = "MP40",
+        [9] = "Thompson",
+        [10] = "Sten",
+        [11] = "Garand",
+        [12] = "Silencer",
+        [13] = "FG42",
+        [14] = "FG42 Scope",
+        [15] = "Panzerfaust",
+        [16] = "Potato Masher",
+        [17] = "Flamethrower",
+        [18] = "Pineapple",
+        [19] = "Map Mortar",
+        [20] = "Map Mortar Splash",
+        [21] = "Kicked",
+        [22] = "Dynamite",
+        [23] = "Airstrike",
+        [24] = "Syringe",
+        [25] = "Ammo",
+        [26] = "Arty",
+        [27] = "Water",
+        [28] = "Slime",
+        [29] = "Lava",
+        [30] = "Crush",
+        [31] = "Telefrag",
+        [32] = "Falling",
+        [33] = "Suicide",
+        [34] = "Target Laser",
+        [35] = "Trigger Hurt",
+        [36] = "Explosive",
+        [37] = "Carbine",
+        [38] = "Kar98",
+        [39] = "GPG40",
+        [40] = "M7",
+        [41] = "Landmine",
+        [42] = "Satchel",
+        [43] = "Smoke Bomb",
+        [44] = "Mobile MG42",
+        [45] = "Silenced Colt",
+        [46] = "Garand Scope",
+        [47] = "Crush Construction",
+        [48] = "Crush Construction Death",
+        [49] = "Crush Construction Death No Attacker",
+        [50] = "K43",
+        [51] = "K43 Scope",
+        [52] = "Mortar",
+        [53] = "Akimbo Colt",
+        [54] = "Akimbo Luger",
+        [55] = "Akimbo Silenced Colt",
+        [56] = "Akimbo Silenced Luger",
+        [57] = "Smoke Grenade",
+        [58] = "Swap Places",
+        [59] = "Switch Team",
+        [60] = "Shove",
+        [61] = "Knife Ka-Bar",
+        [62] = "Mobile Browning",
+        [63] = "Mortar 2",
+        [64] = "Bazooka",
+        [65] = "Backstab",
+        [66] = "MP34",
+        [67] = "Num Mods",
+    };
+
+    private static string WeaponName(int weaponId)
+        => WeaponNames.TryGetValue(weaponId, out var name) ? name : weaponId.ToString();
+
+    private static string ModName(int modId)
+        => ModNames.TryGetValue(modId, out var name)
+            ? name
+            : modId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string MatchResultText(Match match)
+    {
+        var round1 = match.Rounds.FirstOrDefault(r => r.RoundNumber == 1);
+        var round2 = match.Rounds.FirstOrDefault(r => r.RoundNumber == 2);
+
+        if (round2 is null)
+        {
+            return "Pending (no round 2 yet)";
+        }
+
+        if (round1 is null)
+        {
+            return OverallTeamName(MapToOverallTeam(2, round2.WinnerTeam));
+        }
+
+        // Stopwatch draw rule: if round 2 next time equals the ORIGINAL first-round time limit,
+        // neither side set a time.
+        var baseLimit = ParseStopwatchTimeSeconds(round1.TimeLimit);
+        var t2Next = ParseStopwatchTimeSeconds(round2.NextTimeLimit);
+        if (baseLimit is not null && t2Next is not null)
+        {
+            if (t2Next.Value == baseLimit.Value)
+            {
+                return "Draw";
+            }
+        }
+        else if (string.Equals(Norm(round2.NextTimeLimit), Norm(round1.TimeLimit), StringComparison.Ordinal))
+        {
+            return "Draw";
+        }
+
+        var t1 = ParseStopwatchTimeSeconds(round1.NextTimeLimit);
+        var t2 = t2Next;
+
+        if (t1 is null || t2 is null)
+        {
+            return OverallTeamName(MapToOverallTeam(2, round2.WinnerTeam));
+        }
+
+        // Smaller time is better (faster). If round 2 beats the time, round 2 winner wins.
+        // If round 2 matches or is slower, round 1 winner wins.
+        if (t2.Value < t1.Value)
+        {
+            return OverallTeamName(MapToOverallTeam(2, round2.WinnerTeam));
+        }
+
+        return OverallTeamName(MapToOverallTeam(1, round1.WinnerTeam));
+    }
+
+    private static string RoundTeamName(int teamId) => teamId switch
+    {
+        1 => "Axis",
+        2 => "Allies",
+        3 => "Spectators",
+        _ => $"Team {teamId}",
+    };
+
+    private static string OverallTeamName(int teamId) => teamId switch
+    {
+        1 => "Team 1",
+        2 => "Team 2",
+        _ => $"Team {teamId}",
+    };
+
+    private static int MapToOverallTeam(int roundNumber, int teamId)
+    {
+        // In stopwatch, teams swap between rounds.
+        // Overall Team 1/2 are defined by round 1.
+        if (roundNumber == 2)
+        {
+            return teamId switch
+            {
+                1 => 2,
+                2 => 1,
+                _ => teamId,
+            };
+        }
+
+        return teamId;
+    }
+
+    private static string Norm(string? s) => (s ?? string.Empty).Trim();
+
+    private static int? ParseStopwatchTimeSeconds(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var v = value.Trim();
+        var dot = v.IndexOf('.');
+        if (dot >= 0)
+        {
+            v = v[..dot];
+        }
+
+        var parts = v.Split(':');
+        if (parts.Length is < 1 or > 3)
+        {
+            return null;
+        }
+
+        static bool TryParsePart(string s, out int n)
+            => int.TryParse(s.Trim(), out n) && n >= 0;
+
+        if (parts.Length == 1)
+        {
+            return TryParsePart(parts[0], out var seconds) ? seconds : null;
+        }
+
+        if (parts.Length == 2)
+        {
+            if (!TryParsePart(parts[0], out var minutes) || !TryParsePart(parts[1], out var seconds))
+            {
+                return null;
+            }
+
+            return checked(minutes * 60 + seconds);
+        }
+
+        if (!TryParsePart(parts[0], out var hours) || !TryParsePart(parts[1], out var minutes2) || !TryParsePart(parts[2], out var seconds2))
+        {
+            return null;
+        }
+
+        return checked(hours * 3600 + minutes2 * 60 + seconds2);
+    }
+
+    private RenderFragment RoundContent(MatchRound round) => @<div>
+        @foreach (var side in round.Sides.OrderBy(s => s.Team))
+        {
+            @SidePanel(
+                teamLabel: RoundTeamName(side.Team),
+                showWinner: side.IsWinner,
+                playerCount: side.PlayerCount,
+                players: side.Players,
+                weaponStatsForPlayer: (p) => WeaponStatsForPlayer(round, p, subtractRound1: round.RoundNumber == 2 && _round2WeaponStatsLookCumulative))
+        }
+
+        @ObituariesPanel(round)
+    </div>;
+
+    private RenderFragment ObituariesPanel(MatchRound round) => @<MudPaper Class="pa-4" Elevation="1">
+        <MudText Typo="Typo.h6">Obituaries</MudText>
+
+        @if (round.Obituaries is null || round.Obituaries.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mt-1">No obituaries recorded.</MudText>
+        }
+        else
+        {
+            var guidToName = round.Sides
+                .SelectMany(s => s.Players)
+                .Where(p => !string.IsNullOrWhiteSpace(p.Guid))
+                .GroupBy(p => p.Guid, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().Name, StringComparer.OrdinalIgnoreCase);
+
+            <MudTable Dense="true" Hover="true" Breakpoint="Breakpoint.Sm" Items="round.Obituaries.OrderBy(o => o.TimestampMs)">
+                <ColGroup>
+                    <col style="width:90px;" />
+                    <col />
+                    <col />
+                    <col style="width:90px;" />
+                </ColGroup>
+                <HeaderContent>
+                    <MudTh>Time</MudTh>
+                    <MudTh>Attacker</MudTh>
+                    <MudTh>Victim</MudTh>
+                    <MudTh align="Align.Right">MOD</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Time">@FormatObituaryTime(round, context.TimestampMs)</MudTd>
+                    <MudTd DataLabel="Attacker">@PlayerNameOrGuid(guidToName, context.AttackerGuid)</MudTd>
+                    <MudTd DataLabel="Victim">@PlayerNameOrGuid(guidToName, context.TargetGuid)</MudTd>
+                    <MudTd DataLabel="MOD" align="Align.Right">@ModName(context.MeansOfDeath)</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>;
+
+    private RenderFragment PlayerNameOrGuid(IReadOnlyDictionary<string, string> guidToName, string? guid) => @<span>
+        @if (string.IsNullOrWhiteSpace(guid))
+        {
+            @("-")
+        }
+        else if (guidToName.TryGetValue(guid, out var name))
+        {
+            <EtColoredText Text="@name" />
+        }
+        else
+        {
+            @(guid)
+        }
+    </span>;
+
+    private static string FormatObituaryTime(MatchRound round, long timestampMs)
+    {
+        // Some sources store absolute timestamps; some store relative-to-round.
+        // Prefer a relative time if we can infer it.
+        var relativeMs = (round.RoundStartMs > 0 && timestampMs > round.RoundStartMs)
+            ? timestampMs - round.RoundStartMs
+            : timestampMs;
+
+        if (relativeMs < 0)
+        {
+            relativeMs = timestampMs;
+        }
+
+        var t = TimeSpan.FromMilliseconds(relativeMs);
+        return t.ToString(@"mm\:ss\.fff", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private RenderFragment OverallContent(Match match, MatchRound round2) => @<div>
+        @{
+            var winnerOverallTeamId = OverallWinnerTeamId(match);
+            var round1 = match.Rounds.FirstOrDefault(r => r.RoundNumber == 1);
+        }
+        @foreach (var side in BuildOverallSidesFromRounds(round1, round2))
+        {
+            @SidePanel(
+                teamLabel: side.TeamLabel,
+                showWinner: winnerOverallTeamId is not null && winnerOverallTeamId.Value == side.OverallTeamId,
+                playerCount: side.PlayerCount,
+                players: side.Players,
+                weaponStatsForPlayer: (p) => WeaponStatsForPlayer(round2, p, subtractRound1: false))
+        }
+    </div>;
+
+    private RenderFragment SidePanel(
+        string teamLabel,
+        bool showWinner,
+        int playerCount,
+        IReadOnlyList<MatchPlayer> players,
+        Func<MatchPlayer, IEnumerable<WeaponStatView>> weaponStatsForPlayer) => @<MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+            <MudText Typo="Typo.h6">@teamLabel</MudText>
+            @if (showWinner)
+            {
+                <MudChip T="string" Color="Color.Success" Variant="Variant.Filled" Size="Size.Small">Winner</MudChip>
+            }
+        </MudStack>
+
+        <MudText Typo="Typo.body2" Class="mt-1">
+            Players: @playerCount
+        </MudText>
+
+        @PlayersGrid(players, weaponStatsForPlayer)
+    </MudPaper>;
+
+    private RenderFragment PlayersGrid(
+        IReadOnlyList<MatchPlayer> players,
+        Func<MatchPlayer, IEnumerable<WeaponStatView>> weaponStatsForPlayer) => @<div>
+        <PlayerStatsGrid Players="@ToPlayerStatsGridRows(players, weaponStatsForPlayer)" />
+    </div>;
+
+    private static IReadOnlyList<PlayerStatsGridRow> ToPlayerStatsGridRows(
+        IReadOnlyList<MatchPlayer> players,
+        Func<MatchPlayer, IEnumerable<WeaponStatView>> weaponStatsForPlayer)
+    {
+        return players.Select(p => new PlayerStatsGridRow
+        {
+            Guid = p.Guid,
+            Name = p.Name,
+            TimePlayedPercent = p.TimePlayedPercent,
+            DamageGiven = p.DamageGiven,
+            DamageReceived = p.DamageReceived,
+            TeamDamageGiven = p.TeamDamageGiven,
+            TeamDamageReceived = p.TeamDamageReceived,
+            Gibs = p.Gibs,
+            SelfKills = p.SelfKills,
+            TeamKills = p.TeamKills,
+            WeaponStats = weaponStatsForPlayer(p)
+                .Select(ws => new PlayerWeaponStatRow(ws.Weapon, ws.Hits, ws.Atts, ws.Kills, ws.Deaths, ws.Headshots))
+                .ToList(),
+            ClassStats = p.ClassStats
+                .Where(cs => cs.Ms > 0)
+                .OrderBy(cs => cs.ClassId)
+                .Select(cs => new PlayerClassStatRow(ClassName(cs.ClassId), FormatDurationMs(cs.Ms)))
+                .ToList(),
+        }).ToList();
+    }
+
+    private sealed record WeaponStatView(int Weapon, int Hits, int Atts, int Kills, int Deaths, int Headshots);
+
+    private static string ClassName(int classId) => classId switch
+    {
+        0 => "Soldier",
+        1 => "Medic",
+        2 => "Engineer",
+        3 => "Fieldop",
+        4 => "Covert",
+        _ => $"Class {classId}",
+    };
+
+    private static string FormatDurationMs(long ms)
+    {
+        if (ms <= 0)
+        {
+            return "0:00";
+        }
+
+        var ts = TimeSpan.FromMilliseconds(ms);
+        if (ts.TotalHours >= 1)
+        {
+            return $"{(int)ts.TotalHours}:{ts.Minutes:00}:{ts.Seconds:00}";
+        }
+
+        return $"{(int)ts.TotalMinutes}:{ts.Seconds:00}";
+    }
+
+    private sealed class OverallSideView
+    {
+        public required int OverallTeamId { get; init; }
+        public required string TeamLabel { get; init; }
+        public required int PlayerCount { get; init; }
+        public required IReadOnlyList<MatchPlayer> Players { get; init; }
+    }
+
+    private sealed class OverallPlayerAccumulator
+    {
+        public required string Key { get; init; }
+        public Guid Id { get; set; }
+        public string Guid { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+
+        public double TimePlayedPercentSum { get; set; }
+        public int TimePlayedPercentCount { get; set; }
+
+        public int DamageGiven { get; set; }
+        public int DamageReceived { get; set; }
+        public int TeamDamageGiven { get; set; }
+        public int TeamDamageReceived { get; set; }
+        public int Gibs { get; set; }
+        public int SelfKills { get; set; }
+        public int TeamKills { get; set; }
+        public int TeamGibs { get; set; }
+
+        public Dictionary<int, MatchPlayerWeaponStat> WeaponStatsByWeapon { get; } = new();
+
+        public Dictionary<int, long> ClassMsByClassId { get; } = new();
+    }
+
+    private static IReadOnlyList<OverallSideView> BuildOverallSidesFromRounds(MatchRound? round1, MatchRound round2)
+    {
+        var byOverallTeam = new Dictionary<int, Dictionary<string, OverallPlayerAccumulator>>
+        {
+            [1] = new Dictionary<string, OverallPlayerAccumulator>(StringComparer.OrdinalIgnoreCase),
+            [2] = new Dictionary<string, OverallPlayerAccumulator>(StringComparer.OrdinalIgnoreCase),
+        };
+
+        static string PlayerKey(MatchPlayer p)
+            => !string.IsNullOrWhiteSpace(p.Guid) ? p.Guid : p.Id.ToString("D", System.Globalization.CultureInfo.InvariantCulture);
+
+        static void MergeInto(
+            Dictionary<int, Dictionary<string, OverallPlayerAccumulator>> byTeam,
+            MatchRound round,
+            Func<int, int> mapToOverallTeam,
+            bool preferIdsAndNames)
+        {
+            foreach (var p in round.Sides.SelectMany(s => s.Players))
+            {
+                var overallTeam = mapToOverallTeam(p.Team);
+                if (overallTeam is not (1 or 2))
+                {
+                    continue;
+                }
+
+                var key = PlayerKey(p);
+                if (!byTeam[overallTeam].TryGetValue(key, out var acc))
+                {
+                    acc = new OverallPlayerAccumulator
+                    {
+                        Key = key,
+                        Id = p.Id,
+                        Guid = p.Guid,
+                        Name = p.Name,
+                    };
+                    byTeam[overallTeam][key] = acc;
+                }
+
+                if (preferIdsAndNames)
+                {
+                    acc.Id = p.Id;
+                    if (!string.IsNullOrWhiteSpace(p.Guid))
+                    {
+                        acc.Guid = p.Guid;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(p.Name))
+                    {
+                        acc.Name = p.Name;
+                    }
+                }
+
+                acc.DamageGiven += p.DamageGiven;
+                acc.DamageReceived += p.DamageReceived;
+                acc.TeamDamageGiven += p.TeamDamageGiven;
+                acc.TeamDamageReceived += p.TeamDamageReceived;
+                acc.Gibs += p.Gibs;
+                acc.SelfKills += p.SelfKills;
+                acc.TeamKills += p.TeamKills;
+                acc.TeamGibs += p.TeamGibs;
+
+                if (p.TimePlayedPercent > 0)
+                {
+                    acc.TimePlayedPercentSum += p.TimePlayedPercent;
+                    acc.TimePlayedPercentCount++;
+                }
+
+                foreach (var ws in p.WeaponStats)
+                {
+                    if (!acc.WeaponStatsByWeapon.TryGetValue(ws.Weapon, out var existing))
+                    {
+                        acc.WeaponStatsByWeapon[ws.Weapon] = new MatchPlayerWeaponStat
+                        {
+                            Id = ws.Id,
+                            MatchPlayerId = acc.Id,
+                            MatchPlayer = null!,
+                            Weapon = ws.Weapon,
+                            Hits = ws.Hits,
+                            Atts = ws.Atts,
+                            Kills = ws.Kills,
+                            Deaths = ws.Deaths,
+                            Headshots = ws.Headshots,
+                        };
+                        continue;
+                    }
+
+                    existing.Hits += ws.Hits;
+                    existing.Atts += ws.Atts;
+                    existing.Kills += ws.Kills;
+                    existing.Deaths += ws.Deaths;
+                    existing.Headshots += ws.Headshots;
+                }
+
+                foreach (var cs in p.ClassStats)
+                {
+                    if (cs.Ms <= 0)
+                    {
+                        continue;
+                    }
+
+                    var existing = acc.ClassMsByClassId.TryGetValue(cs.ClassId, out var ms) ? ms : 0;
+                    acc.ClassMsByClassId[cs.ClassId] = existing + cs.Ms;
+                }
+            }
+        }
+
+        if (round1 is not null)
+        {
+            MergeInto(byOverallTeam, round1, teamId => MapToOverallTeam(1, teamId), preferIdsAndNames: false);
+        }
+        MergeInto(byOverallTeam, round2, teamId => MapToOverallTeam(2, teamId), preferIdsAndNames: true);
+
+        MatchPlayer ToPlayer(OverallPlayerAccumulator acc)
+        {
+            var timePlayedPercent = acc.TimePlayedPercentCount <= 0
+                ? 0
+                : acc.TimePlayedPercentSum / acc.TimePlayedPercentCount;
+
+            var weaponStats = acc.WeaponStatsByWeapon.Values
+                .Select(ws =>
+                {
+                    ws.MatchPlayerId = acc.Id;
+                    return ws;
+                })
+                .OrderBy(ws => ws.Weapon)
+                .ToList();
+
+            var classStats = acc.ClassMsByClassId
+                .Where(kv => kv.Value > 0)
+                .OrderBy(kv => kv.Key)
+                .Select(kv => new MatchPlayerClassStat
+                {
+                    Id = Guid.Empty,
+                    MatchPlayerId = acc.Id,
+                    MatchPlayer = null!,
+                    ClassId = kv.Key,
+                    Ms = kv.Value,
+                })
+                .ToList();
+
+            return new MatchPlayer
+            {
+                Id = acc.Id,
+                MatchSideId = Guid.Empty,
+                MatchSide = null!,
+                ClientNum = 0,
+                Guid = string.IsNullOrWhiteSpace(acc.Guid) ? string.Empty : acc.Guid,
+                Name = string.IsNullOrWhiteSpace(acc.Name) ? acc.Key : acc.Name,
+                Team = 0,
+                Rounds = 0,
+                Xp = 0,
+                TimePlayedPercent = timePlayedPercent,
+                DamageGiven = acc.DamageGiven,
+                DamageReceived = acc.DamageReceived,
+                TeamDamageGiven = acc.TeamDamageGiven,
+                TeamDamageReceived = acc.TeamDamageReceived,
+                Gibs = acc.Gibs,
+                SelfKills = acc.SelfKills,
+                TeamKills = acc.TeamKills,
+                TeamGibs = acc.TeamGibs,
+                WeaponStats = weaponStats,
+                ClassStats = classStats,
+            };
+        }
+
+        return byOverallTeam
+            .Select(kv => new OverallSideView
+            {
+                OverallTeamId = kv.Key,
+                TeamLabel = OverallTeamName(kv.Key),
+                PlayerCount = kv.Value.Count,
+                Players = kv.Value.Values.Select(ToPlayer).ToList(),
+            })
+            .OrderBy(s => s.OverallTeamId)
+            .ToList();
+    }
+
+    private Dictionary<string, Dictionary<int, WeaponStatView>> BuildWeaponStatsByGuid(MatchRound? round)
+    {
+        var dict = new Dictionary<string, Dictionary<int, WeaponStatView>>(StringComparer.OrdinalIgnoreCase);
+        if (round is null)
+        {
+            return dict;
+        }
+
+        foreach (var p in round.Sides.SelectMany(s => s.Players))
+        {
+            if (string.IsNullOrWhiteSpace(p.Guid))
+            {
+                continue;
+            }
+
+            if (!dict.TryGetValue(p.Guid, out var byWeapon))
+            {
+                byWeapon = new Dictionary<int, WeaponStatView>();
+                dict[p.Guid] = byWeapon;
+            }
+
+            foreach (var ws in p.WeaponStats)
+            {
+                if (!byWeapon.TryGetValue(ws.Weapon, out var existing))
+                {
+                    existing = new WeaponStatView(ws.Weapon, 0, 0, 0, 0, 0);
+                }
+
+                byWeapon[ws.Weapon] = existing with
+                {
+                    Hits = existing.Hits + ws.Hits,
+                    Atts = existing.Atts + ws.Atts,
+                    Kills = existing.Kills + ws.Kills,
+                    Deaths = existing.Deaths + ws.Deaths,
+                    Headshots = existing.Headshots + ws.Headshots,
+                };
+            }
+        }
+
+        return dict;
+    }
+
+    private IEnumerable<WeaponStatView> WeaponStatsForPlayer(MatchRound round, MatchPlayer player, bool subtractRound1)
+    {
+        var baseStats = player.WeaponStats
+            .GroupBy(ws => ws.Weapon)
+            .ToDictionary(
+                g => g.Key,
+                g => new WeaponStatView(
+                    g.Key,
+                    g.Sum(x => x.Hits),
+                    g.Sum(x => x.Atts),
+                    g.Sum(x => x.Kills),
+                    g.Sum(x => x.Deaths),
+                    g.Sum(x => x.Headshots)));
+
+        if (!subtractRound1 || round.RoundNumber != 2 || string.IsNullOrWhiteSpace(player.Guid))
+        {
+            return baseStats.Values;
+        }
+
+        if (!_round1WeaponStatsByGuid.TryGetValue(player.Guid, out var round1ByWeapon))
+        {
+            return baseStats.Values;
+        }
+
+        var result = new List<WeaponStatView>(baseStats.Count);
+        foreach (var kv in baseStats)
+        {
+            var w = kv.Key;
+            var s2 = kv.Value;
+            if (!round1ByWeapon.TryGetValue(w, out var s1))
+            {
+                result.Add(s2);
+                continue;
+            }
+
+            result.Add(new WeaponStatView(
+                w,
+                Math.Max(0, s2.Hits - s1.Hits),
+                Math.Max(0, s2.Atts - s1.Atts),
+                Math.Max(0, s2.Kills - s1.Kills),
+                Math.Max(0, s2.Deaths - s1.Deaths),
+                Math.Max(0, s2.Headshots - s1.Headshots)));
+        }
+
+        return result.Where(ws => ws.Atts != 0 || ws.Hits != 0 || ws.Kills != 0 || ws.Deaths != 0 || ws.Headshots != 0);
+    }
+
+    private static int? OverallWinnerTeamId(Match match)
+    {
+        var round1 = match.Rounds.FirstOrDefault(r => r.RoundNumber == 1);
+        var round2 = match.Rounds.FirstOrDefault(r => r.RoundNumber == 2);
+
+        if (round2 is null)
+        {
+            return null;
+        }
+
+        if (round1 is null)
+        {
+            return MapToOverallTeam(2, round2.WinnerTeam);
+        }
+
+        // Stopwatch draw rule: if round 2 next time equals the ORIGINAL first-round time limit,
+        // neither side set a time.
+        var baseLimit = ParseStopwatchTimeSeconds(round1.TimeLimit);
+        var t2Next = ParseStopwatchTimeSeconds(round2.NextTimeLimit);
+        if (baseLimit is not null && t2Next is not null)
+        {
+            if (t2Next.Value == baseLimit.Value)
+            {
+                return null;
+            }
+        }
+        else if (string.Equals(Norm(round2.NextTimeLimit), Norm(round1.TimeLimit), StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var t1 = ParseStopwatchTimeSeconds(round1.NextTimeLimit);
+        var t2 = t2Next;
+
+        if (t1 is null || t2 is null)
+        {
+            return MapToOverallTeam(2, round2.WinnerTeam);
+        }
+
+        // Smaller time is better (faster). If round 2 beats the time, round 2 winner wins.
+        // If round 2 matches or is slower, round 1 winner wins.
+        if (t2.Value < t1.Value)
+        {
+            return MapToOverallTeam(2, round2.WinnerTeam);
+        }
+
+        return MapToOverallTeam(1, round1.WinnerTeam);
+    }
+}

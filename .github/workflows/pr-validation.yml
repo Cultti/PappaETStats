@@ -1,0 +1,107 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches:
+      - '**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-validation-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore PappaETStats.sln
+
+      - name: Build
+        run: dotnet build PappaETStats.sln -c Release --no-restore
+
+      - name: Discover test projects
+        id: tests
+        shell: bash
+        run: |
+          projects=$(find . -name '*.csproj' -exec grep -l 'Microsoft.NET.Test.Sdk' {} +) || true
+          if [ -z "$projects" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No test projects found, skipping test step."
+          else
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Test projects:"
+            echo "$projects"
+          fi
+
+      - name: Test
+        if: steps.tests.outputs.found == 'true'
+        run: dotnet test PappaETStats.sln -c Release --no-build --verbosity normal
+
+  docker-smoke-test:
+    name: Docker build & smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: pappaetstats:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start container
+        run: |
+          docker run -d --name pappaetstats-smoke \
+            -p 8080:8080 \
+            -e ASPNETCORE_ENVIRONMENT=Production \
+            pappaetstats:pr-${{ github.event.pull_request.number }}
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if ! docker ps --filter name=pappaetstats-smoke --filter status=running --quiet | grep -q .; then
+              echo "Container exited before becoming ready."
+              exit 1
+            fi
+            status=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/ || echo 000)
+            if [ "$status" = "200" ]; then
+              echo "App responded with HTTP 200 after ${attempt} attempt(s)."
+              exit 0
+            fi
+            echo "Attempt ${attempt}: HTTP ${status}, retrying..."
+            sleep 2
+          done
+          echo "App did not become healthy in time."
+          exit 1
+
+      - name: Container logs
+        if: always()
+        run: docker logs pappaetstats-smoke || true
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f pappaetstats-smoke || true

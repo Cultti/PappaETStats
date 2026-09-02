@@ -1,0 +1,285 @@
+@using MudBlazor
+
+<MudDataGrid T="PlayerStatsGridRow"
+             Items="Players.OrderByDescending(p => p.DamageGiven)"
+             Dense="true"
+             Hover="true"
+             ReadOnly="true"
+             SortMode="MudBlazor.SortMode.None"
+             expand-single-row="true"
+             FooterClass="pappa-players-grid-footer"
+             Class="pappa-players-grid">
+    <ColGroup>
+        <col style="width: var(--pappa-col-expand);" />
+        <col />
+        @if (ShowGames)
+        {
+            <col style="width: var(--pappa-col-2);" />
+        }
+        <col style="width: var(--pappa-col-kdr);" />
+        <col style="width: var(--pappa-col-2);" />
+        <col style="width: var(--pappa-col-2);" />
+        <col style="width: var(--pappa-col-5);" />
+        <col style="width: var(--pappa-col-5);" />
+        <col style="width: var(--pappa-col-2);" />
+        @if (ShowTeamStats)
+        {
+            <col style="width: var(--pappa-col-2);" />
+            <col style="width: var(--pappa-col-2);" />
+        }
+        <col style="width: var(--pappa-col-5);" />
+        <col style="width: var(--pappa-col-2);" />
+    </ColGroup>
+
+    <Columns>
+        <HierarchyColumn T="PlayerStatsGridRow" enable-header-toggle="true" />
+
+        <TemplateColumn T="PlayerStatsGridRow" Title="Player" HeaderClass="pappa-col-player" CellClass="pappa-col-player">
+            <CellTemplate>
+                @if (!string.IsNullOrWhiteSpace(context.Item.Guid))
+                {
+                    <MudLink Href="@($"/player/{System.Uri.EscapeDataString(context.Item.Guid)}")" Underline="Underline.Always">
+                        <EtColoredText Text="@context.Item.Name" />
+                    </MudLink>
+                }
+                else
+                {
+                    <EtColoredText Text="@context.Item.Name" />
+                }
+            </CellTemplate>
+            <FooterTemplate>
+                <strong>Totals</strong>
+            </FooterTemplate>
+        </TemplateColumn>
+
+        @if (ShowGames)
+        {
+            <TemplateColumn T="PlayerStatsGridRow" Title="Games" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
+                <CellTemplate>@context.Item.Games</CellTemplate>
+                <FooterTemplate>
+                    <div><strong>@Players.Sum(p => p.Games)</strong></div>
+                </FooterTemplate>
+            </TemplateColumn>
+        }
+
+        <TemplateColumn T="PlayerStatsGridRow" Title="K/D" HeaderClass="pappa-col-num pappa-col-kdr" CellClass="pappa-col-num pappa-col-kdr">
+            <CellTemplate>
+                @{
+                    var kills = context.Item.WeaponStats.Sum(s => s.Kills);
+                    var deaths = context.Item.WeaponStats.Sum(s => s.Deaths);
+                    var kdr = deaths <= 0 ? kills : (double)kills / deaths;
+                }
+                @kdr.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
+            </CellTemplate>
+            <FooterTemplate>
+                <div>
+                    <strong>@TotalKdr.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)</strong>
+                </div>
+            </FooterTemplate>
+        </TemplateColumn>
+
+        <TemplateColumn T="PlayerStatsGridRow" Title="Kills" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
+            <CellTemplate>@context.Item.WeaponStats.Sum(s => s.Kills)</CellTemplate>
+            <FooterTemplate>
+                <div><strong>@TotalKills</strong></div>
+            </FooterTemplate>
+        </TemplateColumn>
+
+        <TemplateColumn T="PlayerStatsGridRow" Title="Deaths" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
+            <CellTemplate>@context.Item.WeaponStats.Sum(s => s.Deaths)</CellTemplate>
+            <FooterTemplate>
+                <div><strong>@TotalDeaths</strong></div>
+            </FooterTemplate>
+        </TemplateColumn>
+
+        <PropertyColumn T="PlayerStatsGridRow" TProperty="int" Property="x => x.DamageGiven" Title="Dmg G" HeaderClass="pappa-col-num pappa-col-5" CellClass="pappa-col-num pappa-col-5">
+            <FooterTemplate>
+                <div><strong>@Players.Sum(p => p.DamageGiven)</strong></div>
+            </FooterTemplate>
+        </PropertyColumn>
+
+        <PropertyColumn T="PlayerStatsGridRow" TProperty="int" Property="x => x.DamageReceived" Title="Dmg R" HeaderClass="pappa-col-num pappa-col-5" CellClass="pappa-col-num pappa-col-5">
+            <FooterTemplate>
+                <div><strong>@Players.Sum(p => p.DamageReceived)</strong></div>
+            </FooterTemplate>
+        </PropertyColumn>
+
+        <TemplateColumn T="PlayerStatsGridRow" Title="HS" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
+            <CellTemplate>@context.Item.WeaponStats.Sum(s => s.Headshots)</CellTemplate>
+            <FooterTemplate>
+                <div><strong>@TotalHeadshots</strong></div>
+            </FooterTemplate>
+        </TemplateColumn>
+
+        @if (ShowTeamStats)
+        {
+            <PropertyColumn T="PlayerStatsGridRow" TProperty="int" Property="x => x.Gibs" Title="Gibs" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
+                <FooterTemplate>
+                    <div><strong>@Players.Sum(p => p.Gibs)</strong></div>
+                </FooterTemplate>
+            </PropertyColumn>
+
+            <PropertyColumn T="PlayerStatsGridRow" TProperty="int" Property="x => x.SelfKills" Title="SK" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
+                <FooterTemplate>
+                    <div><strong>@Players.Sum(p => p.SelfKills)</strong></div>
+                </FooterTemplate>
+            </PropertyColumn>
+        }
+
+        <TemplateColumn T="PlayerStatsGridRow" Title="TP" HeaderClass="pappa-col-num pappa-col-5" CellClass="pappa-col-num pappa-col-5">
+            <CellTemplate>@context.Item.TimePlayedPercent.ToString("00.00", System.Globalization.CultureInfo.InvariantCulture)</CellTemplate>
+        </TemplateColumn>
+
+        <TemplateColumn T="PlayerStatsGridRow" Title="Rev" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
+            <CellTemplate>@context.Item.WeaponStats.Where(s => s.Weapon == 27).Sum(s => s.Hits)</CellTemplate>
+            <FooterTemplate>
+                <div><strong>@TotalRevives</strong></div>
+            </FooterTemplate>
+        </TemplateColumn>
+    </Columns>
+
+    <ChildRowContent>
+        @{
+            var weaponStats = context.Item.WeaponStats
+                .OrderBy(ws => ws.Weapon)
+                .ToList();
+        }
+
+        <MudCard Elevation="0" Class="mt-2" Style="border:1px solid var(--mud-palette-lines-default)">
+            <MudCardContent Class="pa-0">
+                @if (ShowTeamStats || context.Item.ClassStats.Count > 0)
+                {
+                    <MudGrid Class="pa-4" Spacing="2">
+                        @if (ShowTeamStats)
+                        {
+                            <MudItem xs="12" md="6">
+                                @{
+                                    var teamRows = new[]
+                                    {
+                                        new { Label = "Teamkills", Value = context.Item.TeamKills.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                                        new { Label = "Team Damage Given", Value = context.Item.TeamDamageGiven.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                                        new { Label = "Team Damage Received", Value = context.Item.TeamDamageReceived.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                                    };
+                                }
+                                <MudTable Dense="true" Hover="false" Breakpoint="Breakpoint.Sm" Items="teamRows" Context="row" Elevation="0">
+                                    <ColGroup>
+                                        <col />
+                                        <col style="width:8ch;" />
+                                    </ColGroup>
+                                    <RowTemplate>
+                                        <MudTd DataLabel="Stat">@row.Label</MudTd>
+                                        <MudTd DataLabel="Value" align="Align.Right">@row.Value</MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </MudItem>
+                        }
+
+                        @if (context.Item.ClassStats.Count > 0)
+                        {
+                            <MudItem xs="12" md="6">
+                                <MudTable Dense="true" Hover="false" Breakpoint="Breakpoint.Sm" Items="context.Item.ClassStats" Context="row" Elevation="0">
+                                    <ColGroup>
+                                        <col />
+                                        <col style="width:6ch;" />
+                                    </ColGroup>
+                                    <RowTemplate>
+                                        <MudTd DataLabel="Class">@row.Name</MudTd>
+                                        <MudTd DataLabel="Time" align="Align.Right">@row.TimeText</MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                }
+
+                @if (weaponStats.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="pa-4 pt-0">No weapon stats recorded.</MudText>
+                }
+                else
+                {
+                    <MudTable Dense="true" Hover="true" Breakpoint="Breakpoint.Sm" Items="weaponStats" Context="ws" Elevation="0" Class="pappa-weapon-stats-table">
+                        <ColGroup>
+                            <col />
+                            <col style="width:120px;" />
+                            <col style="width:90px;" />
+                            <col style="width:90px;" />
+                            <col style="width:90px;" />
+                            <col style="width:90px;" />
+                        </ColGroup>
+                        <HeaderContent>
+                            <MudTh>Weapon</MudTh>
+                            <MudTh align="Align.Right">Acc</MudTh>
+                            <MudTh align="Align.Right">Hits/Atts</MudTh>
+                            <MudTh align="Align.Right">Kills</MudTh>
+                            <MudTh align="Align.Right">Deaths</MudTh>
+                            <MudTh align="Align.Right">HS</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Weapon">@WeaponName(ws.Weapon)</MudTd>
+                            <MudTd DataLabel="Acc" align="Align.Right">@(ws.Atts <= 0 ? string.Empty : $"{AccuracyPct(ws.Hits, ws.Atts):0.0}%")</MudTd>
+                            <MudTd DataLabel="Hits/Atts" align="Align.Right">@(ws.Atts <= 0 ? string.Empty : $"{ws.Hits}/{ws.Atts}")</MudTd>
+                            <MudTd DataLabel="Kills" align="Align.Right">@(ws.Weapon == 27 ? string.Empty : ws.Kills)</MudTd>
+                            <MudTd DataLabel="Deaths" align="Align.Right">@(ws.Weapon == 27 ? string.Empty : ws.Deaths)</MudTd>
+                            <MudTd DataLabel="HS" align="Align.Right">@(ws.Weapon == 27 ? string.Empty : ws.Headshots)</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudCardContent>
+        </MudCard>
+    </ChildRowContent>
+</MudDataGrid>
+
+@code {
+    [Parameter]
+    public IReadOnlyList<PlayerStatsGridRow> Players { get; set; } = [];
+
+    [Parameter]
+    public bool ShowGames { get; set; }
+
+    [Parameter]
+    public bool ShowTeamStats { get; set; } = true;
+
+    private int TotalKills => Players.Sum(p => p.WeaponStats.Sum(s => s.Kills));
+    private int TotalDeaths => Players.Sum(p => p.WeaponStats.Sum(s => s.Deaths));
+    private int TotalHeadshots => Players.Sum(p => p.WeaponStats.Sum(s => s.Headshots));
+    private int TotalRevives => Players.Sum(p => p.WeaponStats.Where(s => s.Weapon == 27).Sum(s => s.Hits));
+    private double TotalKdr => TotalDeaths <= 0 ? TotalKills : (double)TotalKills / TotalDeaths;
+
+    private static double AccuracyPct(int hits, int atts) => atts <= 0 ? 0 : 100.0 * hits / atts;
+
+    private static readonly IReadOnlyDictionary<int, string> WeaponNames = new Dictionary<int, string>
+    {
+        [0] = "Knife",
+        [1] = "Ka-Bar",
+        [2] = "Luger",
+        [3] = "Colt",
+        [4] = "MP 40",
+        [5] = "Thompson",
+        [6] = "Sten",
+        [7] = "FG 42",
+        [8] = "Panzer",
+        [9] = "Bazooka",
+        [10] = "F.Thrower",
+        [11] = "Grenade",
+        [12] = "Mortar",
+        [13] = "Granatwerf",
+        [14] = "Dynamite",
+        [15] = "Airstrike",
+        [16] = "Artillery",
+        [17] = "Satchel",
+        [18] = "Gren.Launcher",
+        [19] = "Landmine",
+        [20] = "MG 42",
+        [21] = "Browning",
+        [22] = "Carbine",
+        [23] = "K43 Rifle",
+        [24] = "Garand",
+        [25] = "K43",
+        [26] = "MP 34",
+        [27] = "Syringe",
+    };
+
+    private static string WeaponName(int weaponId)
+        => WeaponNames.TryGetValue(weaponId, out var name) ? name : weaponId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}

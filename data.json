@@ -1,0 +1,2293 @@
+{
+    "winnerteam": 1,
+    "serverIp": "46.62.171.107",
+    "timelimit": "12:00",
+    "config": "pappacomp3",
+    "defenderteam": 1,
+    "obituaries": [
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 933936,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 16,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 934401,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 947369,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 6,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 948233,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 951393,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 951760,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 963984,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 964946,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 966363,
+            "attacker": "3D0593E5921E0626A2A5DD3D518B1766"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 972381,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 977205,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 987179,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1003450,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1005684,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1008249,
+            "attacker": "3D0593E5921E0626A2A5DD3D518B1766"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1012251,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1012381,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1012554,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1018506,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 6,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1028787,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1037044,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1039536,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1039930,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1041730,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1045367,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1060096,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1060780,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1061169,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1064709,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1065281,
+            "attacker": "3D0593E5921E0626A2A5DD3D518B1766"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1065896,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1069706,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1083037,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1084885,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1085778,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1086523,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1094219,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1101702,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1108361,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1110473,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1113509,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1123317,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1130097,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 3,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1130778,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1131426,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1132206,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1143639,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1149089,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1152531,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1162135,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1162667,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1167704,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1169663,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1176448,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1182809,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1185843,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1189235,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1189768,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1189835,
+            "attacker": "3D0593E5921E0626A2A5DD3D518B1766"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1191039,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1191915,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1208007,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1209203,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1209522,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1210024,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1216485,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1222199,
+            "attacker": "3D0593E5921E0626A2A5DD3D518B1766"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1222790,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1226427,
+            "attacker": "3D0593E5921E0626A2A5DD3D518B1766"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1227480,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1236925,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1238258,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1238943,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1243101,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1249362,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1249430,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1250326,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1252082,
+            "attacker": "3D0593E5921E0626A2A5DD3D518B1766"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1258774,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1260382,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1266128,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1269394,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 18,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1275841,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1278788,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1280434,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1282312,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1289154,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1296148,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1298483,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1304034,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 6,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1305468,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1305804,
+            "attacker": "3D0593E5921E0626A2A5DD3D518B1766"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1309456,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1312242,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1312524,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1323059,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1326121,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1330416,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1331739,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 7,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1333731,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1338154,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1348897,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1349229,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1351569,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1358751,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1359506,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1359511,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1359787,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 7,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1367930,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1384569,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1386814,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1388461,
+            "attacker": "3D0593E5921E0626A2A5DD3D518B1766"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1389554,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1389960,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1402053,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1402600,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 16,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1403242,
+            "attacker": "3D0593E5921E0626A2A5DD3D518B1766"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1405444,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1406760,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1418093,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1420209,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1424580,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1425130,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1426708,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 16,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1426761,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1430763,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 18,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1439921,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1441182,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1448674,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1449132,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1450262,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1453225,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1455227,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1455408,
+            "attacker": "3D0593E5921E0626A2A5DD3D518B1766"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1458430,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1458975,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1468905,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1469577,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1476241,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1480590,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1485373,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1487674,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 6,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1487729,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1490131,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1490715,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1491944,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1499191,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1499952,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1504201,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1517977,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 7,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1521759,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1524774,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1528126,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1528485,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1529089,
+            "attacker": "3D0593E5921E0626A2A5DD3D518B1766"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1537586,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1539745,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1543607,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1543680,
+            "attacker": "3D0593E5921E0626A2A5DD3D518B1766"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1544769,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1556318,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 7,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1559631,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1561538,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 6,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1563768,
+            "attacker": "E85B7A18144598A28DB574AD12077B6D"
+        },
+        {
+            "meansOfDeath": 7,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1563939,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1565836,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1568802,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1577738,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1578779,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1580551,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 33,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1582127,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 18,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1587381,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1587599,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1592036,
+            "attacker": "D8DCA108CEED57322BEEFC11AC3CC29A"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1598634,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 9,
+            "target": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1599739,
+            "attacker": "7D5152BF7F68C7EEE399BC033FC8818C"
+        },
+        {
+            "meansOfDeath": 18,
+            "target": "3D0593E5921E0626A2A5DD3D518B1766",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1616421,
+            "attacker": "C6357EF130D29291AFFDAF6D84527EA0"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1617589,
+            "attacker": "FF5A6D47603541CB08D799E0A9F2CB20"
+        },
+        {
+            "meansOfDeath": 7,
+            "target": "E85B7A18144598A28DB574AD12077B6D",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1618717,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1619443,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 7,
+            "target": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1620417,
+            "attacker": "B276941529EC35A90708DEB4F640BEDC"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "C6357EF130D29291AFFDAF6D84527EA0",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1622098,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "B276941529EC35A90708DEB4F640BEDC",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1626202,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        },
+        {
+            "meansOfDeath": 8,
+            "target": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "victimRespawnTime": 0,
+            "attackerRespawnTime": 0,
+            "timestamp": 1640243,
+            "attacker": "EBE589CC6E4CB435E6B74E7842E2C4F1"
+        }
+    ],
+    "servername": "^1Pappaliiga.fi ^2Private ^0COMP",
+    "nextTimeLimit": "12:00",
+    "roundEnd": 1643042,
+    "roundStart": 923876,
+    "roundStartUnix": 1770238354,
+    "matchID": "70807623b861402fa8085cd0e08639ff",
+    "roundEndUnix": 1770239073,
+    "round": 2,
+    "players": [
+        {
+            "gibs": 9,
+            "guid": "3D0593E5921E0626A2A5DD3D518B1766",
+            "damage_given": 3074,
+            "weapon_stats": [
+                {
+                    "hits": 5,
+                    "headshots": 0,
+                    "atts": 21,
+                    "deaths": 1,
+                    "weapon": 2,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 0,
+                    "deaths": 1,
+                    "weapon": 3,
+                    "kills": 0
+                },
+                {
+                    "hits": 59,
+                    "headshots": 5,
+                    "atts": 236,
+                    "deaths": 13,
+                    "weapon": 4,
+                    "kills": 4
+                },
+                {
+                    "hits": 74,
+                    "headshots": 8,
+                    "atts": 245,
+                    "deaths": 16,
+                    "weapon": 5,
+                    "kills": 9
+                },
+                {
+                    "hits": 6,
+                    "headshots": 0,
+                    "atts": 23,
+                    "deaths": 4,
+                    "weapon": 11,
+                    "kills": 3
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 1,
+                    "deaths": 0,
+                    "weapon": 17,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 1,
+                    "deaths": 1,
+                    "weapon": 20,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 0,
+                    "deaths": 2,
+                    "weapon": 25,
+                    "kills": 0
+                },
+                {
+                    "hits": 1,
+                    "headshots": 0,
+                    "atts": 4,
+                    "deaths": 0,
+                    "weapon": 26,
+                    "kills": 0
+                },
+                {
+                    "hits": 2,
+                    "headshots": 0,
+                    "atts": 2,
+                    "deaths": 0,
+                    "weapon": 27,
+                    "kills": 0
+                }
+            ],
+            "team": 1,
+            "self_kills": 7,
+            "damage_received": 6003,
+            "team_kills": 4,
+            "clientNum": 1,
+            "team_gibs": 0,
+            "xp": 87,
+            "team_damage_received": 135,
+            "time_played_percent": 67.224019886955,
+            "team_damage_given": 162,
+            "name": "^1.^0Cultti",
+            "rounds": 1
+        },
+        {
+            "gibs": 3,
+            "guid": "B276941529EC35A90708DEB4F640BEDC",
+            "damage_given": 10017,
+            "weapon_stats": [
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 1,
+                    "deaths": 0,
+                    "weapon": 0,
+                    "kills": 0
+                },
+                {
+                    "hits": 30,
+                    "headshots": 5,
+                    "atts": 45,
+                    "deaths": 1,
+                    "weapon": 2,
+                    "kills": 1
+                },
+                {
+                    "hits": 24,
+                    "headshots": 5,
+                    "atts": 65,
+                    "deaths": 0,
+                    "weapon": 3,
+                    "kills": 5
+                },
+                {
+                    "hits": 158,
+                    "headshots": 23,
+                    "atts": 357,
+                    "deaths": 20,
+                    "weapon": 4,
+                    "kills": 15
+                },
+                {
+                    "hits": 210,
+                    "headshots": 25,
+                    "atts": 514,
+                    "deaths": 14,
+                    "weapon": 5,
+                    "kills": 14
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 0,
+                    "deaths": 1,
+                    "weapon": 6,
+                    "kills": 0
+                },
+                {
+                    "hits": 8,
+                    "headshots": 0,
+                    "atts": 28,
+                    "deaths": 1,
+                    "weapon": 11,
+                    "kills": 5
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 4,
+                    "deaths": 0,
+                    "weapon": 14,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 2,
+                    "deaths": 0,
+                    "weapon": 17,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 0,
+                    "deaths": 1,
+                    "weapon": 20,
+                    "kills": 0
+                },
+                {
+                    "hits": 26,
+                    "headshots": 3,
+                    "atts": 54,
+                    "deaths": 0,
+                    "weapon": 25,
+                    "kills": 6
+                },
+                {
+                    "hits": 2,
+                    "headshots": 0,
+                    "atts": 2,
+                    "deaths": 0,
+                    "weapon": 27,
+                    "kills": 0
+                }
+            ],
+            "team": 2,
+            "self_kills": 5,
+            "damage_received": 7231,
+            "team_kills": 1,
+            "clientNum": 2,
+            "team_gibs": 0,
+            "xp": 152,
+            "team_damage_received": 0,
+            "time_played_percent": 80.840219429206,
+            "team_damage_given": 157,
+            "name": "^0Team^5-^7mM^5[^7Vanhaomena^5]",
+            "rounds": 1
+        },
+        {
+            "gibs": 16,
+            "guid": "D8DCA108CEED57322BEEFC11AC3CC29A",
+            "damage_given": 5260,
+            "weapon_stats": [
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 7,
+                    "deaths": 0,
+                    "weapon": 1,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 0,
+                    "deaths": 1,
+                    "weapon": 2,
+                    "kills": 0
+                },
+                {
+                    "hits": 3,
+                    "headshots": 0,
+                    "atts": 7,
+                    "deaths": 1,
+                    "weapon": 3,
+                    "kills": 0
+                },
+                {
+                    "hits": 118,
+                    "headshots": 14,
+                    "atts": 372,
+                    "deaths": 15,
+                    "weapon": 4,
+                    "kills": 16
+                },
+                {
+                    "hits": 124,
+                    "headshots": 20,
+                    "atts": 360,
+                    "deaths": 12,
+                    "weapon": 5,
+                    "kills": 19
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 0,
+                    "deaths": 1,
+                    "weapon": 6,
+                    "kills": 0
+                },
+                {
+                    "hits": 4,
+                    "headshots": 0,
+                    "atts": 11,
+                    "deaths": 1,
+                    "weapon": 11,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 0,
+                    "deaths": 2,
+                    "weapon": 20,
+                    "kills": 0
+                },
+                {
+                    "hits": 3,
+                    "headshots": 0,
+                    "atts": 4,
+                    "deaths": 0,
+                    "weapon": 27,
+                    "kills": 0
+                }
+            ],
+            "team": 2,
+            "self_kills": 5,
+            "damage_received": 6790,
+            "team_kills": 1,
+            "clientNum": 3,
+            "team_gibs": 0,
+            "xp": 103,
+            "team_damage_received": 75,
+            "time_played_percent": 67.417119206678,
+            "team_damage_given": 147,
+            "name": "^9Normaalimies^uxDDD",
+            "rounds": 1
+        },
+        {
+            "gibs": 15,
+            "guid": "EBE589CC6E4CB435E6B74E7842E2C4F1",
+            "damage_given": 8785,
+            "weapon_stats": [
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 5,
+                    "deaths": 0,
+                    "weapon": 0,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 10,
+                    "deaths": 0,
+                    "weapon": 1,
+                    "kills": 0
+                },
+                {
+                    "hits": 22,
+                    "headshots": 0,
+                    "atts": 45,
+                    "deaths": 0,
+                    "weapon": 2,
+                    "kills": 1
+                },
+                {
+                    "hits": 9,
+                    "headshots": 1,
+                    "atts": 22,
+                    "deaths": 2,
+                    "weapon": 3,
+                    "kills": 3
+                },
+                {
+                    "hits": 249,
+                    "headshots": 28,
+                    "atts": 632,
+                    "deaths": 15,
+                    "weapon": 4,
+                    "kills": 25
+                },
+                {
+                    "hits": 158,
+                    "headshots": 17,
+                    "atts": 427,
+                    "deaths": 14,
+                    "weapon": 5,
+                    "kills": 18
+                },
+                {
+                    "hits": 6,
+                    "headshots": 0,
+                    "atts": 14,
+                    "deaths": 2,
+                    "weapon": 11,
+                    "kills": 2
+                },
+                {
+                    "hits": 17,
+                    "headshots": 0,
+                    "atts": 46,
+                    "deaths": 2,
+                    "weapon": 20,
+                    "kills": 3
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 0,
+                    "deaths": 2,
+                    "weapon": 25,
+                    "kills": 0
+                },
+                {
+                    "hits": 9,
+                    "headshots": 0,
+                    "atts": 10,
+                    "deaths": 0,
+                    "weapon": 27,
+                    "kills": 0
+                }
+            ],
+            "team": 1,
+            "self_kills": 9,
+            "damage_received": 8174,
+            "team_kills": 0,
+            "clientNum": 4,
+            "team_gibs": 0,
+            "xp": 167,
+            "team_damage_received": 71,
+            "time_played_percent": 82.625541606488,
+            "team_damage_given": 153,
+            "name": "lettu",
+            "rounds": 1
+        },
+        {
+            "gibs": 11,
+            "guid": "7D5152BF7F68C7EEE399BC033FC8818C",
+            "damage_given": 5871,
+            "weapon_stats": [
+                {
+                    "hits": 10,
+                    "headshots": 0,
+                    "atts": 13,
+                    "deaths": 1,
+                    "weapon": 2,
+                    "kills": 1
+                },
+                {
+                    "hits": 9,
+                    "headshots": 1,
+                    "atts": 19,
+                    "deaths": 1,
+                    "weapon": 3,
+                    "kills": 0
+                },
+                {
+                    "hits": 64,
+                    "headshots": 9,
+                    "atts": 222,
+                    "deaths": 20,
+                    "weapon": 4,
+                    "kills": 9
+                },
+                {
+                    "hits": 146,
+                    "headshots": 18,
+                    "atts": 452,
+                    "deaths": 12,
+                    "weapon": 5,
+                    "kills": 13
+                },
+                {
+                    "hits": 4,
+                    "headshots": 0,
+                    "atts": 11,
+                    "deaths": 1,
+                    "weapon": 11,
+                    "kills": 1
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 3,
+                    "deaths": 0,
+                    "weapon": 14,
+                    "kills": 0
+                },
+                {
+                    "hits": 60,
+                    "headshots": 0,
+                    "atts": 261,
+                    "deaths": 0,
+                    "weapon": 20,
+                    "kills": 11
+                },
+                {
+                    "hits": 2,
+                    "headshots": 0,
+                    "atts": 2,
+                    "deaths": 0,
+                    "weapon": 27,
+                    "kills": 0
+                }
+            ],
+            "team": 2,
+            "self_kills": 6,
+            "damage_received": 5816,
+            "team_kills": 0,
+            "clientNum": 5,
+            "team_gibs": 0,
+            "xp": 123,
+            "team_damage_received": 322,
+            "time_played_percent": 73.652486701943,
+            "team_damage_given": 18,
+            "name": "^7hazz",
+            "rounds": 1
+        },
+        {
+            "gibs": 11,
+            "guid": "C6357EF130D29291AFFDAF6D84527EA0",
+            "damage_given": 6930,
+            "weapon_stats": [
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 4,
+                    "deaths": 0,
+                    "weapon": 0,
+                    "kills": 0
+                },
+                {
+                    "hits": 2,
+                    "headshots": 0,
+                    "atts": 8,
+                    "deaths": 2,
+                    "weapon": 2,
+                    "kills": 0
+                },
+                {
+                    "hits": 11,
+                    "headshots": 1,
+                    "atts": 27,
+                    "deaths": 2,
+                    "weapon": 3,
+                    "kills": 2
+                },
+                {
+                    "hits": 143,
+                    "headshots": 17,
+                    "atts": 370,
+                    "deaths": 11,
+                    "weapon": 4,
+                    "kills": 16
+                },
+                {
+                    "hits": 189,
+                    "headshots": 21,
+                    "atts": 466,
+                    "deaths": 7,
+                    "weapon": 5,
+                    "kills": 13
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 0,
+                    "deaths": 1,
+                    "weapon": 6,
+                    "kills": 0
+                },
+                {
+                    "hits": 4,
+                    "headshots": 0,
+                    "atts": 18,
+                    "deaths": 2,
+                    "weapon": 11,
+                    "kills": 1
+                },
+                {
+                    "hits": 1,
+                    "headshots": 0,
+                    "atts": 2,
+                    "deaths": 0,
+                    "weapon": 16,
+                    "kills": 0
+                },
+                {
+                    "hits": 4,
+                    "headshots": 0,
+                    "atts": 15,
+                    "deaths": 2,
+                    "weapon": 20,
+                    "kills": 0
+                },
+                {
+                    "hits": 13,
+                    "headshots": 0,
+                    "atts": 15,
+                    "deaths": 0,
+                    "weapon": 27,
+                    "kills": 0
+                }
+            ],
+            "team": 2,
+            "self_kills": 15,
+            "damage_received": 6278,
+            "team_kills": 0,
+            "clientNum": 6,
+            "team_gibs": 0,
+            "xp": 122,
+            "team_damage_received": 18,
+            "time_played_percent": 80.458030109438,
+            "team_damage_given": 93,
+            "name": "Aimo Kimpale",
+            "rounds": 1
+        },
+        {
+            "gibs": 3,
+            "guid": "FF5A6D47603541CB08D799E0A9F2CB20",
+            "damage_given": 6144,
+            "weapon_stats": [
+                {
+                    "hits": 11,
+                    "headshots": 2,
+                    "atts": 21,
+                    "deaths": 0,
+                    "weapon": 2,
+                    "kills": 0
+                },
+                {
+                    "hits": 13,
+                    "headshots": 0,
+                    "atts": 33,
+                    "deaths": 2,
+                    "weapon": 3,
+                    "kills": 1
+                },
+                {
+                    "hits": 142,
+                    "headshots": 22,
+                    "atts": 349,
+                    "deaths": 14,
+                    "weapon": 4,
+                    "kills": 14
+                },
+                {
+                    "hits": 91,
+                    "headshots": 10,
+                    "atts": 264,
+                    "deaths": 15,
+                    "weapon": 5,
+                    "kills": 5
+                },
+                {
+                    "hits": 43,
+                    "headshots": 6,
+                    "atts": 91,
+                    "deaths": 0,
+                    "weapon": 6,
+                    "kills": 3
+                },
+                {
+                    "hits": 1,
+                    "headshots": 0,
+                    "atts": 20,
+                    "deaths": 0,
+                    "weapon": 11,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 1,
+                    "deaths": 0,
+                    "weapon": 14,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 1,
+                    "deaths": 0,
+                    "weapon": 15,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 2,
+                    "deaths": 0,
+                    "weapon": 17,
+                    "kills": 0
+                },
+                {
+                    "hits": 14,
+                    "headshots": 0,
+                    "atts": 63,
+                    "deaths": 7,
+                    "weapon": 20,
+                    "kills": 2
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 0,
+                    "deaths": 1,
+                    "weapon": 25,
+                    "kills": 0
+                },
+                {
+                    "hits": 8,
+                    "headshots": 0,
+                    "atts": 9,
+                    "deaths": 0,
+                    "weapon": 27,
+                    "kills": 0
+                }
+            ],
+            "team": 1,
+            "self_kills": 11,
+            "damage_received": 6545,
+            "team_kills": 0,
+            "clientNum": 7,
+            "team_gibs": 0,
+            "xp": 138,
+            "team_damage_received": 177,
+            "time_played_percent": 74.597311708509,
+            "team_damage_given": 54,
+            "name": "^7smak",
+            "rounds": 1
+        },
+        {
+            "gibs": 11,
+            "guid": "E85B7A18144598A28DB574AD12077B6D",
+            "damage_given": 8112,
+            "weapon_stats": [
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 4,
+                    "deaths": 0,
+                    "weapon": 0,
+                    "kills": 0
+                },
+                {
+                    "hits": 31,
+                    "headshots": 3,
+                    "atts": 79,
+                    "deaths": 1,
+                    "weapon": 2,
+                    "kills": 4
+                },
+                {
+                    "hits": 8,
+                    "headshots": 1,
+                    "atts": 19,
+                    "deaths": 2,
+                    "weapon": 3,
+                    "kills": 0
+                },
+                {
+                    "hits": 198,
+                    "headshots": 21,
+                    "atts": 502,
+                    "deaths": 14,
+                    "weapon": 4,
+                    "kills": 23
+                },
+                {
+                    "hits": 168,
+                    "headshots": 22,
+                    "atts": 494,
+                    "deaths": 14,
+                    "weapon": 5,
+                    "kills": 13
+                },
+                {
+                    "hits": 4,
+                    "headshots": 0,
+                    "atts": 17,
+                    "deaths": 1,
+                    "weapon": 11,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 1,
+                    "deaths": 0,
+                    "weapon": 14,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 0,
+                    "deaths": 1,
+                    "weapon": 20,
+                    "kills": 0
+                },
+                {
+                    "hits": 0,
+                    "headshots": 0,
+                    "atts": 0,
+                    "deaths": 1,
+                    "weapon": 25,
+                    "kills": 0
+                },
+                {
+                    "hits": 10,
+                    "headshots": 0,
+                    "atts": 11,
+                    "deaths": 0,
+                    "weapon": 27,
+                    "kills": 0
+                }
+            ],
+            "team": 1,
+            "self_kills": 10,
+            "damage_received": 7356,
+            "team_kills": 1,
+            "clientNum": 0,
+            "team_gibs": 0,
+            "xp": 155,
+            "team_damage_received": 86,
+            "time_played_percent": 73.511929561425,
+            "team_damage_given": 100,
+            "name": "^zpotat",
+            "rounds": 1
+        }
+    ],
+    "serverPort": "27960",
+    "mapname": "sw_goldrush_te"
+}
