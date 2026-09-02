@@ -77,9 +77,6 @@ public sealed class StatsDbContext(DbContextOptions<StatsDbContext> options) : D
             .HasForeignKey(c => c.MatchPlayerId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        modelBuilder.Entity<MatchPlayer>()
-            .HasIndex(p => p.Guid);
-
         modelBuilder.Entity<MatchObituary>()
             .HasIndex(o => o.TargetGuid);
 

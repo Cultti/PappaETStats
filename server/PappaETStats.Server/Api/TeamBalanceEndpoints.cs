@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using PappaETStats.SkillRating;
 using PappaETStats.Server.Data;
+using PappaETStats.Server.Domain;
 using PappaETStats.Server.Options;
 
 namespace PappaETStats.Server.Api;
@@ -23,7 +24,7 @@ public static class TeamBalanceEndpoints
         return endpoints;
     }
 
-    private sealed record BalanceTeamsRequest(IReadOnlyList<string>? Guids, double? SigmaMultiplier);
+    private sealed record BalanceTeamsRequest(IReadOnlyList<string>? Guids, double? SigmaMultiplier, int? Mode);
 
     private sealed record BalancedPlayer(string Guid, double Mu, double Sigma, double Conservative);
 
@@ -68,6 +69,22 @@ public static class TeamBalanceEndpoints
             return Results.BadRequest(new { error = "sigmaMultiplier must be a positive number" });
         }
 
+        SkillRatingBucket? bucket;
+        switch (body.Mode)
+        {
+            case null:
+                bucket = null;
+                break;
+            case (int)SkillRatingBucket.Small:
+                bucket = SkillRatingBucket.Small;
+                break;
+            case (int)SkillRatingBucket.Large:
+                bucket = SkillRatingBucket.Large;
+                break;
+            default:
+                return Results.BadRequest(new { error = "mode must be null (overall), 3 (3on3/4on4) or 6 (5on5/6on6)" });
+        }
+
         var guids = body.Guids ?? Array.Empty<string>();
         var normalized = guids
             .Select(g => (g ?? string.Empty).Trim())
@@ -108,24 +125,31 @@ public static class TeamBalanceEndpoints
         var candidates = new List<Candidate>(guidPairs.Count);
         foreach (var (guidString, playerId) in guidPairs)
         {
+            double mu;
+            double sigma;
+
             if (existing.TryGetValue(guidString, out var row))
             {
-                candidates.Add(new Candidate(
-                    GuidString: guidString,
-                    PlayerId: playerId,
-                    Mu: row.Mu,
-                    Sigma: row.Sigma,
-                    Conservative: row.Mu - sigmaMultiplier * row.Sigma));
+                // Fall back to the overall rating when the player has no history in the requested format.
+                (mu, sigma) = bucket switch
+                {
+                    SkillRatingBucket.Small => (row.MuSmall ?? row.Mu, row.SigmaSmall ?? row.Sigma),
+                    SkillRatingBucket.Large => (row.MuLarge ?? row.Mu, row.SigmaLarge ?? row.Sigma),
+                    _ => (row.Mu, row.Sigma),
+                };
             }
             else
             {
-                candidates.Add(new Candidate(
-                    GuidString: guidString,
-                    PlayerId: playerId,
-                    Mu: options.Mu,
-                    Sigma: options.Sigma,
-                    Conservative: options.Mu - sigmaMultiplier * options.Sigma));
+                mu = options.Mu;
+                sigma = options.Sigma;
             }
+
+            candidates.Add(new Candidate(
+                GuidString: guidString,
+                PlayerId: playerId,
+                Mu: mu,
+                Sigma: sigma,
+                Conservative: mu - sigmaMultiplier * sigma));
         }
 
         var calculator = new SkillRatingCalculator(options);
@@ -195,6 +219,7 @@ public static class TeamBalanceEndpoints
         return Results.Ok(new
         {
             sigmaMultiplier,
+            mode = bucket is null ? (int?)null : (int)bucket.Value,
             team1 = ToTeam(team1),
             team2 = ToTeam(team2),
             winProbabilityTeam1 = pTeam1,

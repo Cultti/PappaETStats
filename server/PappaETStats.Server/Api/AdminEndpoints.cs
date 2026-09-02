@@ -263,83 +263,15 @@ public static class AdminEndpoints
                     continue;
                 }
 
-                static int MapToOverallTeam(int roundNumber, int teamId)
-                {
-                    // In stopwatch, teams swap between rounds.
-                    // Overall Team 1/2 are defined by round 1.
-                    if (roundNumber == 2)
-                    {
-                        return teamId switch
-                        {
-                            1 => 2,
-                            2 => 1,
-                            _ => teamId,
-                        };
-                    }
-
-                    return teamId;
-                }
-
-                static Team? MapOverallTeamToSkillTeam(int overallTeamId) => overallTeamId switch
-                {
-                    1 => Team.Axis,
-                    2 => Team.Allies,
-                    _ => null,
-                };
-
                 var winningOverallTeamId = winner == MatchWinner.Team1 ? 1 : 2;
-                var winningSkillTeam = MapOverallTeamToSkillTeam(winningOverallTeamId);
+                var winningSkillTeam = SkillRatingUpdater.MapOverallTeamToSkillTeam(winningOverallTeamId);
                 if (winningSkillTeam is null)
                 {
                     skippedEmpty++;
                     continue;
                 }
 
-                var aggregate = new Dictionary<string, (Guid playerId, Team team, int damageDealt)>(StringComparer.OrdinalIgnoreCase);
-
-                void AddRound(MatchRound r)
-                {
-                    foreach (var p in r.Sides.SelectMany(s => s.Players))
-                    {
-                        if (string.IsNullOrWhiteSpace(p.Guid))
-                        {
-                            continue;
-                        }
-
-                        var guidString = p.Guid.Trim();
-                        if (!Guid.TryParseExact(guidString, "N", out var playerId))
-                        {
-                            continue;
-                        }
-
-                        var overallTeamId = MapToOverallTeam(r.RoundNumber, p.Team);
-                        var skillTeam = MapOverallTeamToSkillTeam(overallTeamId);
-                        if (skillTeam is null)
-                        {
-                            continue;
-                        }
-
-                        var damage = Math.Max(0, p.DamageGiven);
-
-                        if (aggregate.TryGetValue(guidString, out var existing))
-                        {
-                            aggregate[guidString] = (
-                                existing.playerId,
-                                existing.team,
-                                checked(existing.damageDealt + damage));
-                        }
-                        else
-                        {
-                            aggregate[guidString] = (playerId, skillTeam.Value, damage);
-                        }
-                    }
-                }
-
-                if (round1 is not null)
-                {
-                    AddRound(round1);
-                }
-                AddRound(round2);
+                var aggregate = SkillRatingUpdater.BuildAggregate(round1, round2);
 
                 if (aggregate.Count == 0)
                 {
@@ -347,8 +279,8 @@ public static class AdminEndpoints
                     continue;
                 }
 
-                var axisCount = aggregate.Values.Count(v => v.team == Team.Axis);
-                var alliesCount = aggregate.Values.Count(v => v.team == Team.Allies);
+                var axisCount = aggregate.Values.Count(v => v.Team == Team.Axis);
+                var alliesCount = aggregate.Values.Count(v => v.Team == Team.Allies);
                 if (axisCount == 0 || alliesCount == 0 || axisCount != alliesCount)
                 {
                     skippedUnevenTeams++;
@@ -374,34 +306,13 @@ public static class AdminEndpoints
                     playerRows[guidString] = created;
                 }
 
-                // Build calculator input from current ratings.
-                var states = new List<MatchPlayerState>(aggregate.Count);
-                var idToGuidString = new Dictionary<Guid, string>(aggregate.Count);
-
-                foreach (var (guidString, v) in aggregate)
-                {
-                    var row = playerRows[guidString];
-                    idToGuidString[v.playerId] = guidString;
-
-                    states.Add(new MatchPlayerState(
-                        PlayerId: v.playerId,
-                        Rating: new PappaETStats.SkillRating.SkillRating(row.Mu, row.Sigma),
-                        Team: v.team,
-                        DamageDealt: v.damageDealt));
-                }
-
-                var updated = calculator.UpdateRatings(states, winner: winningSkillTeam.Value, damageFloor: 0);
-                foreach (var (playerId, rating) in updated)
-                {
-                    if (!idToGuidString.TryGetValue(playerId, out var guidString))
-                    {
-                        continue;
-                    }
-
-                    var row = playerRows[guidString];
-                    row.Mu = rating.Mu;
-                    row.Sigma = rating.Sigma;
-                }
+                SkillRatingUpdater.ApplyMatch(
+                    calculator,
+                    options,
+                    aggregate,
+                    winner: winningSkillTeam.Value,
+                    teamSize: axisCount,
+                    playerRows);
 
                 processedMatches++;
             }

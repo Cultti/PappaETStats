@@ -36,6 +36,19 @@ else
             }
         </MudText>
 
+        <MudText Typo="Typo.body2" Class="mt-1"><strong>Top victim:</strong>
+            @if (_vm.TopVictim is null)
+            {
+                @("-")
+            }
+            else
+            {
+                <MudLink Href="@($"/player/{System.Uri.EscapeDataString(_vm.TopVictim.Guid)}")" Underline="Underline.Always">
+                    <EtColoredText Text="@_vm.TopVictim.DisplayName" />
+                </MudLink>
+            }
+        </MudText>
+
         <MudDivider Class="my-4" />
 
         <MudText Typo="Typo.h6">Known nicks</MudText>
@@ -181,6 +194,8 @@ else
 
     private string? _loadError;
     private ViewModel? _vm;
+    private bool _isLoading;
+    private string? _loadingPlayerGuid;
 
     private sealed record MatchRow(
         Guid MatchId,
@@ -211,6 +226,8 @@ else
 
     private sealed record NemesisRow(string Guid, string DisplayName);
 
+    private sealed record TopVictimRow(string Guid, string DisplayName);
+
     private sealed record WeaponStatRow(int Weapon, int Hits, int Atts, int Kills, int Deaths, int Headshots);
 
     private sealed record WeaponStatRoundRow(
@@ -229,6 +246,7 @@ else
         public required string DisplayName { get; init; }
         public required List<string> Nicknames { get; init; }
         public required NemesisRow? Nemesis { get; init; }
+        public required TopVictimRow? TopVictim { get; init; }
         public required PlayerAggregate Aggregate { get; init; }
         public required List<WeaponStatRow> WeaponStats { get; init; }
         public required List<MatchRow> Matches { get; init; }
@@ -236,9 +254,6 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        _loadError = null;
-        _vm = null;
-
         var playerGuid = (PlayerGuid ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(playerGuid))
         {
@@ -248,23 +263,66 @@ else
 
         var playerGuidUpper = playerGuid.ToUpperInvariant();
 
+        if (_vm is not null && string.Equals(_vm.PlayerGuid, playerGuidUpper, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (_isLoading && string.Equals(_loadingPlayerGuid, playerGuidUpper, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _isLoading = true;
+        _loadingPlayerGuid = playerGuidUpper;
+        _loadError = null;
+        _vm = null;
+
         try
         {
             await using var db = await DbFactory.CreateDbContextAsync();
 
-            var nickRows = await db.MatchPlayers
-                .AsNoTracking()
-                .Where(p => p.Guid == playerGuidUpper)
-                .Where(p => !string.IsNullOrWhiteSpace(p.Name))
-                .Select(p => p.Name)
-                .ToListAsync();
+            // Known nicks: show latest seen nickname first.
+            var nickRowsLatestFirst = await (
+                from p in db.MatchPlayers.AsNoTracking()
+                join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
+                join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
+                where p.Guid == playerGuidUpper
+                      && !string.IsNullOrWhiteSpace(p.Name)
+                orderby r.IngestedAtUtc descending, r.RoundStartUnix descending
+                select p.Name
+            ).ToListAsync();
 
-            var nicknames = nickRows
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            var nicknames = new List<string>();
+            var seenNicknames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var name in nickRowsLatestFirst)
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
+
+                if (seenNicknames.Add(name))
+                {
+                    nicknames.Add(name);
+                }
+            }
 
             var displayName = nicknames.Count > 0 ? nicknames[0] : playerGuid;
+
+            async Task<string?> GetLatestPlayerNameOrNull(string guidUpper)
+            {
+                return await (
+                    from p in db.MatchPlayers.AsNoTracking()
+                    join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
+                    join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
+                    where !string.IsNullOrWhiteSpace(p.Guid)
+                          && p.Guid == guidUpper
+                          && !string.IsNullOrWhiteSpace(p.Name)
+                    orderby r.IngestedAtUtc descending, r.RoundStartUnix descending
+                    select p.Name
+                ).FirstOrDefaultAsync();
+            }
 
             // Nemesis = player who has killed this player the most (based on obituaries).
             var nemesisAgg = await db.MatchObituaries
@@ -280,24 +338,35 @@ else
             NemesisRow? nemesis = null;
             if (nemesisAgg is not null && !string.IsNullOrWhiteSpace(nemesisAgg.Guid))
             {
-                var nemesisName = await (
-                    from p in db.MatchPlayers.AsNoTracking()
-                    join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
-                    join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
-                    where !string.IsNullOrWhiteSpace(p.Guid)
-                          && p.Guid == nemesisAgg.Guid
-                          && !string.IsNullOrWhiteSpace(p.Name)
-                    orderby r.IngestedAtUtc descending, r.RoundStartUnix descending
-                    select p.Name
-                ).FirstOrDefaultAsync();
+                var nemesisName = await GetLatestPlayerNameOrNull(nemesisAgg.Guid);
 
                 nemesis = new NemesisRow(
                     Guid: nemesisAgg.Guid,
                     DisplayName: string.IsNullOrWhiteSpace(nemesisName) ? nemesisAgg.Guid : nemesisName);
             }
 
+            // Top victim = player this player has killed the most (based on obituaries).
+            var topVictimAgg = await db.MatchObituaries
+                .AsNoTracking()
+                .Where(o => o.AttackerGuid == playerGuidUpper)
+                .Where(o => o.TargetGuid != null && o.TargetGuid != playerGuidUpper)
+                .GroupBy(o => o.TargetGuid!)
+                .Select(g => new { Guid = g.Key, Kills = g.Count() })
+                .OrderByDescending(x => x.Kills)
+                .ThenBy(x => x.Guid)
+                .FirstOrDefaultAsync();
+
+            TopVictimRow? topVictim = null;
+            if (topVictimAgg is not null && !string.IsNullOrWhiteSpace(topVictimAgg.Guid))
+            {
+                var victimName = await GetLatestPlayerNameOrNull(topVictimAgg.Guid);
+                topVictim = new TopVictimRow(
+                    Guid: topVictimAgg.Guid,
+                    DisplayName: string.IsNullOrWhiteSpace(victimName) ? topVictimAgg.Guid : victimName);
+            }
+
             // Any-round match ids for link list.
-            var matchIdsAny = await (
+            var matchIdsAnyQuery = (
                 from p in db.MatchPlayers.AsNoTracking()
                 join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
                 join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
@@ -305,7 +374,9 @@ else
                 select r.MatchId
             )
             .Distinct()
-            .ToListAsync();
+            .AsQueryable();
+
+            var matchIdsAny = await matchIdsAnyQuery.ToListAsync();
 
             // Player aggregates across all rounds played.
             var overallStatsRows = await (
@@ -352,8 +423,7 @@ else
                 join p in db.MatchPlayers.AsNoTracking() on ws.MatchPlayerId equals p.Id
                 join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
                 join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
-                where matchIdsAny.Contains(r.MatchId)
-                      && p.Guid == playerGuidUpper
+                where p.Guid == playerGuidUpper
                 group ws by new { r.MatchId, r.RoundNumber, ws.Weapon } into g
                 select new WeaponStatRoundRow(
                     g.Key.MatchId,
@@ -488,17 +558,18 @@ else
                 Revives: totalRevives);
 
             // Match list (prefer round 2 info, fall back to round 1).
-            var matchesById = await db.Matches
-                .AsNoTracking()
-                .Where(m => matchIdsAny.Contains(m.Id))
-                .Select(m => new { m.Id, m.MapName, m.ServerName })
-                .ToDictionaryAsync(x => x.Id);
+            var matchesById = await (
+                from m in db.Matches.AsNoTracking()
+                join matchId in matchIdsAnyQuery on m.Id equals matchId
+                select new { m.Id, m.MapName, m.ServerName }
+            ).ToDictionaryAsync(x => x.Id);
 
-            var rounds = await db.MatchRounds
-                .AsNoTracking()
-                .Where(r => matchIdsAny.Contains(r.MatchId) && (r.RoundNumber == 1 || r.RoundNumber == 2))
-                .Select(r => new { r.Id, r.MatchId, r.RoundNumber, r.IngestedAtUtc, r.NextTimeLimit, r.RoundStartUnix })
-                .ToListAsync();
+            var rounds = await (
+                from r in db.MatchRounds.AsNoTracking()
+                join matchId in matchIdsAnyQuery on r.MatchId equals matchId
+                where r.RoundNumber == 1 || r.RoundNumber == 2
+                select new { r.Id, r.MatchId, r.RoundNumber, r.IngestedAtUtc, r.NextTimeLimit, r.RoundStartUnix }
+            ).ToListAsync();
 
             var roundIds = rounds.Select(r => r.Id).Distinct().ToList();
             var sides = await db.MatchSides
@@ -562,6 +633,7 @@ else
                 DisplayName = displayName,
                 Nicknames = nicknames,
                 Nemesis = nemesis,
+                TopVictim = topVictim,
                 Aggregate = agg,
                 WeaponStats = weaponStatsAllRounds,
                 Matches = matchRows,
@@ -570,6 +642,11 @@ else
         catch (Exception ex)
         {
             _loadError = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+            _loadingPlayerGuid = null;
         }
     }
 

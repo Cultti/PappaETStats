@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PappaETStats.Server.Domain;
 
@@ -11,10 +12,10 @@ public sealed class MatchObituary
 
     public long TimestampMs { get; set; }
 
-    [MaxLength(64)]
+    [Column(TypeName = "varchar(64)")]
     public string? TargetGuid { get; set; }
 
-    [MaxLength(64)]
+    [Column(TypeName = "varchar(64)")]
     public string? AttackerGuid { get; set; }
 
     public int MeansOfDeath { get; set; }

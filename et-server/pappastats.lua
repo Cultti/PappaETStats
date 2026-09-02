@@ -14,6 +14,7 @@ local version = "2.0-dev"
 -- Hardcoded endpoint for now (will be config later)
 local WEBHOOK_URL = "http://localhost:5080/api/matches"
 local WEBHOOK_MATCHID_URL = WEBHOOK_URL .. "/matchid"
+local WEBHOOK_DEMO_URL_TEMPLATE = "http://localhost:5080/api/matches/%s/demo"
 
 -- Where to persist outgoing webhook payloads (relative to fs_homepath/fs_game).
 -- Ensure this directory exists on the server (e.g. <fs_homepath>/<fs_game>/stats/).
@@ -31,6 +32,7 @@ local trap_Milliseconds = et.trap_Milliseconds
 local trap_Cvar_Get = et.trap_Cvar_Get
 local gentity_get = et.gentity_get
 local table_insert = table.insert
+local trap_SendConsoleCommand = et.trap_SendConsoleCommand
 
 -- Connected client tracking
 local CON_CONNECTED = 2
@@ -54,6 +56,19 @@ local SEND_DELAY_MS = 5000
 local pending_send = false
 local pending_send_at_ms = 0
 local pending_send_token = nil
+
+-- Demo recording state (start at warmup countdown, stop at warmup/intermission).
+local demo_recording = false
+local demo_filename = nil
+local pending_demo_stop = false
+local pending_demo_stop_at_ms = 0
+
+-- Demo upload scheduling (upload after round 2 stats are sent).
+local pending_demo_upload = false
+local pending_demo_upload_at_ms = 0
+local pending_demo_upload_attempts_left = 0
+local DEMO_UPLOAD_RETRY_DELAY_MS = 1000
+local DEMO_UPLOAD_MAX_ATTEMPTS = 15
 
 -- Per-player class time tracking.
 -- Totals are stored as classStats[guid][classId] = milliseconds.
@@ -220,6 +235,79 @@ local function writeTextFile(filename, content)
     return true
 end
 
+local function os_file_exists(path)
+    local p = tostring(path or "")
+    if p == "" then
+        return false
+    end
+
+    local f = io.open(p, "rb")
+    if f then
+        f:close()
+        return true
+    end
+    return false
+end
+
+local function path_join(a, b)
+    local sep = "/"
+    if package and package.config and type(package.config) == "string" and #package.config >= 1 then
+        sep = package.config:sub(1, 1)
+    end
+
+    a = tostring(a or "")
+    b = tostring(b or "")
+    if a == "" then
+        return b
+    end
+    if b == "" then
+        return a
+    end
+
+    local aEnds = a:sub(-1) == sep
+    local bStarts = b:sub(1, 1) == sep
+    if aEnds and bStarts then
+        return a .. b:sub(2)
+    elseif (not aEnds) and (not bStarts) then
+        return a .. sep .. b
+    end
+    return a .. b
+end
+
+local function sanitize_filename_component(s)
+    s = tostring(s or "")
+    -- Replace anything that could be problematic in filenames or console parsing.
+    s = s:gsub("[^%w%._%-]", "_")
+    s = s:gsub("_+", "_")
+    s = s:gsub("^_+", "")
+    s = s:gsub("_+$", "")
+    if s == "" then
+        return "na"
+    end
+    return s
+end
+
+local function send_server_console(cmd)
+    if not trap_SendConsoleCommand then
+        return false
+    end
+
+    local command = tostring(cmd or "")
+    if command == "" then
+        return false
+    end
+
+    -- Append ensures ordering with other server-side commands.
+    trap_SendConsoleCommand(et.EXEC_APPEND, command .. "\n")
+    return true
+end
+
+local function stop_demo_recording()
+    -- Always issue demo_stop; we want recording to stop on command.
+    send_server_console("demo_stop")
+    demo_recording = false
+end
+
 local function savePostedJsonPayload(payload_str)
     local unix = os.time()
     local baseName = string.format("posted_%d.json", unix)
@@ -285,6 +373,22 @@ local function executeCurlCommandAsync(curl_cmd, payload)
     if temp_file then
         os.execute(string.format("sleep 15 && rm -f %s &", temp_file))
     end
+
+    if success then
+        return true, "Request sent asynchronously"
+    end
+
+    return false, string.format("Failed to start async request (os.execute=%s,%s,%s)", tostring(r1), tostring(r2), tostring(r3))
+end
+
+local function executeCurlCommandAsyncRaw(curl_cmd)
+    if not curl_cmd or curl_cmd == "" then
+        return false, "Empty curl command"
+    end
+
+    local cmd = curl_cmd .. " &"
+    local r1, r2, r3 = os.execute(cmd)
+    local success = os_execute_ok(r1, r2, r3)
 
     if success then
         return true, "Request sent asynchronously"
@@ -398,6 +502,75 @@ local function safe_number(v)
     return tonumber(v) or 0
 end
 
+local function build_demo_filename()
+    local mapname = sanitize_filename_component(get_current_mapname())
+    local matchPart = sanitize_filename_component(current_match_id or "nomatch")
+    -- Keep the filename stable and easy to correlate later.
+    return string.format("pappastats_%s_%s", mapname, matchPart)
+end
+
+local function start_demo_recording()
+    local filename = build_demo_filename()
+    demo_filename = filename
+    demo_recording = true
+    send_server_console(string.format("demo_record %s", filename))
+    return filename
+end
+
+local function resolve_demo_file_path()
+    if not demo_filename or demo_filename == "" then
+        return nil
+    end
+
+    local base = tostring(demo_filename)
+
+    -- Demos are always stored at:
+    --   <fs_homepath>/<fs_game>/svdemos/<demoname>.sv_84
+    local home = tostring(trap_Cvar_Get("fs_homepath") or "")
+    local game = tostring(trap_Cvar_Get("fs_game") or "")
+    local demoDir = path_join(path_join(home, game), "svdemos")
+
+    local fileName = base
+    if not fileName:find("%.sv_%d%d$") then
+        fileName = fileName .. ".sv_84"
+    end
+
+    local candidate = path_join(demoDir, fileName)
+    if os_file_exists(candidate) then
+        return candidate
+    end
+
+    return nil
+end
+
+local function upload_demo_to_backend(authToken)
+    if not current_match_id or current_match_id == "" then
+        return false, "current_match_id missing"
+    end
+    if not demo_filename or demo_filename == "" then
+        local filename = build_demo_filename()
+        demo_filename = filename
+    end
+
+    local demoPath = resolve_demo_file_path()
+    if not demoPath then
+        return false, "demo file not found yet"
+    end
+
+    local url = string.format(WEBHOOK_DEMO_URL_TEMPLATE, url_encode(current_match_id))
+
+    -- Include --retry to avoid executeCurlCommandAsync auto-adding JSON content-type.
+    local curl_cmd = string.format(
+        'curl -X POST -H "Authorization: Bearer %s" --compressed --connect-timeout 2 --max-time 180 --retry 3 --retry-delay 1 --retry-max-time 180 --silent --output /dev/null -F "file=@%s" -F "demoFilename=%s" "%s"',
+        tostring(authToken or ""),
+        tostring(demoPath),
+        tostring(demo_filename),
+        tostring(url)
+    )
+
+    return executeCurlCommandAsyncRaw(curl_cmd)
+end
+
 local function isEmpty(v)
     if v == nil or v == "" then
         return "0"
@@ -475,6 +648,7 @@ end
 -- ---------------------------------------------------------------------------
 local function handle_gamestate_change()
     local newGamestate = tonumber(et.trap_Cvar_Get("gamestate"))
+    local currentRound = safe_number(trap_Cvar_Get("g_currentRound"))
 
     -- Verify that gamestate has changed. If not, do nothing.
     if newGamestate == nil or newGamestate == currentGameState then
@@ -483,7 +657,36 @@ local function handle_gamestate_change()
 
     log(string.format("Gamestate changed: %d -> %d", currentGameState, newGamestate))
 
-    if newGamestate == et.GS_PLAYING then -- Game has started
+    if newGamestate == et.GS_WARMUP and currentRound == 0 then
+        -- Round 1 warmup: ensure no recording continues.
+        pending_demo_stop = false
+        pending_demo_stop_at_ms = 0
+        stop_demo_recording()
+    elseif newGamestate == et.GS_WARMUP_COUNTDOWN and currentRound == 0 then
+        -- Round 1 countdown: stop any existing demo, then start fresh.
+        pending_demo_stop = false
+        pending_demo_stop_at_ms = 0
+        stop_demo_recording()
+
+        -- Ensure we have a backend match id before starting the demo so the filename can include it.
+        if not current_match_id or current_match_id == "" then
+            local server_ip, server_port = getServerIpPort()
+            local mapname = get_current_mapname()
+
+            -- Reuse the same token we use for stats sending (currently hardcoded for testing).
+            local authToken = pending_send_token or "1234567890"
+            local fetched, err = fetchMatchIDFromAPI(authToken, server_ip, server_port, mapname, 1)
+            if fetched then
+                current_match_id = fetched
+                log("Fetched matchID from API for demo: " .. tostring(current_match_id))
+            else
+                log("Failed to fetch matchID from API for demo: " .. tostring(err))
+            end
+        end
+
+        local filename = start_demo_recording()
+        log("Demo recording started: " .. tostring(filename))
+    elseif newGamestate == et.GS_PLAYING then -- Game has started
         round_start_time = trap_Milliseconds()
         round_start_unix = os.time()    
         -- New round started; cancel any pending send from a previous intermission.
@@ -497,9 +700,67 @@ local function handle_gamestate_change()
         pending_send_token = "1234567890" -- Temporary hardcoded token for testing
         pending_send_at_ms = round_end_time + SEND_DELAY_MS
         pending_send = true
+
+        -- Round 1 intermission: stop demo recording after the same 5s delay as stats.
+        if currentRound == 0 then
+            pending_demo_stop = true
+            pending_demo_stop_at_ms = round_end_time + SEND_DELAY_MS - 1000 -- Stop 1s before stats send
+        end
     end
 
     currentGameState = newGamestate
+end
+
+local function process_pending_demo_stop()
+    if not pending_demo_stop then
+        return
+    end
+
+    local now = trap_Milliseconds()
+    if now < (pending_demo_stop_at_ms or 0) then
+        return
+    end
+
+    pending_demo_stop = false
+    pending_demo_stop_at_ms = 0
+    stop_demo_recording()
+    if demo_filename and demo_filename ~= "" then
+        log("Demo recording stopped: " .. tostring(demo_filename))
+    else
+        log("Demo recording stopped")
+    end
+end
+
+local function process_pending_demo_upload()
+    if not pending_demo_upload then
+        return
+    end
+
+    local now = trap_Milliseconds()
+    if now < (pending_demo_upload_at_ms or 0) then
+        return
+    end
+
+    if (pending_demo_upload_attempts_left or 0) <= 0 then
+        pending_demo_upload = false
+        pending_demo_upload_at_ms = 0
+        log("Demo upload aborted (out of attempts)")
+        return
+    end
+
+    pending_demo_upload_attempts_left = pending_demo_upload_attempts_left - 1
+
+    local authToken = pending_send_token or "1234567890"
+    local ok, msg = upload_demo_to_backend(authToken)
+    if ok then
+        pending_demo_upload = false
+        pending_demo_upload_at_ms = 0
+        log("Demo upload started")
+        return
+    end
+
+    pending_demo_upload_at_ms = now + DEMO_UPLOAD_RETRY_DELAY_MS
+    log("Demo upload retry: " .. tostring(msg))
 end
 
 local function process_pending_send()
@@ -514,6 +775,14 @@ local function process_pending_send()
 
     pending_send = false
     SendStats(pending_send_token)
+
+    -- After second round stats have been sent, upload the demo.
+    local resolvedRound = (safe_number(trap_Cvar_Get("g_currentRound")) == 0) and 2 or 1
+    if resolvedRound == 2 then
+        pending_demo_upload = true
+        pending_demo_upload_attempts_left = DEMO_UPLOAD_MAX_ATTEMPTS
+        pending_demo_upload_at_ms = trap_Milliseconds() + 250
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -674,7 +943,7 @@ end
 -- Build the current match stats payload and POST it to the webhook.
 -- authToken: optional; if provided, sends header "Authorization: Bearer <token>".
 -- matchID: optional; passed through to gather_match_stats.
-function SendStats(authToken, matchID)
+function SendStats(authToken)
     if not json then
         return false, "dkjson not available (require('dkjson') failed)"
     end
@@ -684,22 +953,21 @@ function SendStats(authToken, matchID)
     local resolvedRound = (safe_number(trap_Cvar_Get("g_currentRound")) == 0) and 2 or 1
 
     -- Solely trust backend match id generator. Always fetch matchID based on server+map+round.
-    if not matchID or matchID == "" then
+    if not current_match_id or current_match_id == "" then
         local server_ip, server_port = getServerIpPort()
         local fetched, err = fetchMatchIDFromAPI(authToken, server_ip, server_port, mapname, resolvedRound)
         if fetched then
             current_match_id = fetched
-            matchID = fetched
-            log("Using matchID from API: " .. matchID)
+            log("Using matchID from API: " .. current_match_id)
         else
             -- Backend contract: for round=2 it will still create a new one if no open match exists.
             -- If backend is unreachable, fall back to unix time to avoid losing data.
-            matchID = tostring(os.time())
-            log("Failed to fetch matchID from API, falling back to unix time: " .. matchID .. " (" .. tostring(err) .. ")")
+            current_match_id = tostring(os.time())
+            log("Failed to fetch matchID from API, falling back to unix time: " .. current_match_id .. " (" .. tostring(err) .. ")")
         end
     end
 
-    local payload_tbl = gather_match_stats(matchID)
+    local payload_tbl = gather_match_stats(current_match_id)
     local payload_str = json.encode(payload_tbl)
     if not payload_str then
         return false, "Failed to encode JSON"
@@ -729,6 +997,8 @@ end
 function et_RunFrame(gameFrameLevelTime)
     handle_gamestate_change()
     process_pending_send()
+    process_pending_demo_stop()
+    process_pending_demo_upload()
 end
 
 function et_InitGame(levelTime, randomSeed, restart)
@@ -745,6 +1015,15 @@ function et_InitGame(levelTime, randomSeed, restart)
     pending_send = false
     pending_send_at_ms = 0
     pending_send_token = nil
+
+    pending_demo_stop = false
+    pending_demo_stop_at_ms = 0
+    demo_recording = false
+    demo_filename = nil
+
+    pending_demo_upload = false
+    pending_demo_upload_at_ms = 0
+    pending_demo_upload_attempts_left = 0
 
     initMaxClients()
     rebuild_connectedClients()

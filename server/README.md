@@ -56,6 +56,25 @@ The Lua script in [et-server/pappastats.lua](../et-server/pappastats.lua) POSTs 
   - Body:
     - One JSON object (example below)
 
+### Team balancing
+
+- `POST /api/skillratings/balance-teams`
+  - Headers:
+    - `Authorization: Bearer <token>` (same token as ingest)
+  - Body:
+    - `guids` – list of 32-hex-char player GUIDs (at least 2, no duplicates)
+    - `sigmaMultiplier` – optional, defaults to `2.0`
+    - `mode` – optional rating track: omit/`null` for overall, `3` for 3on3/4on4, `6` for 5on5/6on6
+
+Every rated match updates the player's overall rating **and** the format-specific rating that
+matches the team size (up to 4 players per team → 3on3/4on4, 5 or more → 5on5/6on6). All three
+tracks use identical calculation logic. If a player has no history in the requested format, their
+overall rating is used instead.
+
+Existing history can be backfilled into the format-specific tracks with
+`POST /api/admin/skillratings/recalculate` (admin token), which wipes ratings and replays all
+completed matches chronologically.
+
 ## What gets saved
 
 This backend stores the incoming payload in a relational form.

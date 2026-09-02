@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PappaETStats.Server.Data;
 
@@ -10,9 +11,11 @@ using PappaETStats.Server.Data;
 namespace PappaETStats.Server.Migrations
 {
     [DbContext(typeof(StatsDbContext))]
-    partial class StatsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260406102607_GuidIndexes")]
+    partial class GuidIndexes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.0");
@@ -355,19 +358,7 @@ namespace PappaETStats.Server.Migrations
                     b.Property<double>("Mu")
                         .HasColumnType("REAL");
 
-                    b.Property<double?>("MuLarge")
-                        .HasColumnType("REAL");
-
-                    b.Property<double?>("MuSmall")
-                        .HasColumnType("REAL");
-
                     b.Property<double>("Sigma")
-                        .HasColumnType("REAL");
-
-                    b.Property<double?>("SigmaLarge")
-                        .HasColumnType("REAL");
-
-                    b.Property<double?>("SigmaSmall")
                         .HasColumnType("REAL");
 
                     b.HasKey("Guid");

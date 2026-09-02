@@ -4,6 +4,9 @@
 -- Usage (in chat):
 --   !balance
 --   !balance <sigmaMultiplier>
+--   !balance 3on3|4on4        (use the 3on3/4on4 skill ratings)
+--   !balance 5on5|6on6        (use the 5on5/6on6 skill ratings)
+--   !balance 5on5 2.5         (tokens can be combined in any order)
 --
 -- Only allowed during et.GS_WARMUP. Any player can run it.
 -- Posts active (Axis/Allies) player GUIDs to backend and prints suggested teams.
@@ -333,14 +336,15 @@ local function collect_active_players()
     return guids, nameByGuid, clientNumByGuid
 end
 
-local function build_payload_json(guids, sigmaMultiplier)
+local function build_payload_json(guids, sigmaMultiplier, mode)
     if not json then
         return nil, "dkjson not available"
     end
 
     local payload = {
         guids = guids,
-        sigmaMultiplier = sigmaMultiplier
+        sigmaMultiplier = sigmaMultiplier,
+        mode = mode
     }
 
     return json.encode(payload)
@@ -408,6 +412,16 @@ local function format_pct(p)
     return string.format("%.0f%%", v * 100.0)
 end
 
+local function format_mode(mode)
+    local v = tonumber(mode)
+    if v == 3 then
+        return "3on3/4on4"
+    elseif v == 6 then
+        return "5on5/6on6"
+    end
+    return "overall"
+end
+
 local function apply_team_assignments(t1Players, t2Players, clientNumByGuid)
     if type(clientNumByGuid) ~= "table" then
         return
@@ -443,7 +457,7 @@ local function print_balance_result(response, nameByGuid, clientNumByGuid)
     local t1Players = (team1.players or team1.Players or {})
     local t2Players = (team2.players or team2.Players or {})
 
-    say_all(string.format("^3Balance:^7 Team1 %s vs Team2 %s", format_pct(p1), format_pct(p2)))
+    say_all(string.format("^3Balance:^7 Team1 %s vs Team2 %s ^3[%s]", format_pct(p1), format_pct(p2), format_mode(response.mode)))
 
     local function team_line(label, players)
         local names = {}
@@ -482,18 +496,25 @@ local function handle_balance_command(rawMessage)
     end
 
     local sigmaMultiplier = 3
+    local mode = nil
 
-    -- Parse: !balance [multiplier]
-    -- Accept: !balance 2.5
+    -- Parse: !balance [3on3|4on4|5on5|6on6] [multiplier]
     local parts = {}
     for token in msg:gmatch("%S+") do
         table.insert(parts, token)
     end
 
-    if #parts >= 2 then
-        local parsed = tonumber(parts[2])
-        if parsed and parsed > 0 then
-            sigmaMultiplier = parsed
+    for i = 2, #parts do
+        local token = parts[i]:lower()
+        if token == "3on3" or token == "4on4" then
+            mode = 3
+        elseif token == "5on5" or token == "6on6" then
+            mode = 6
+        else
+            local parsed = tonumber(token)
+            if parsed and parsed > 0 then
+                sigmaMultiplier = parsed
+            end
         end
     end
 
@@ -508,7 +529,7 @@ local function handle_balance_command(rawMessage)
         return
     end
 
-    local payload_json, err = build_payload_json(guids, sigmaMultiplier)
+    local payload_json, err = build_payload_json(guids, sigmaMultiplier, mode)
     if not payload_json then
         say_all("^1Balance failed:^7 " .. tostring(err))
         return
@@ -521,6 +542,7 @@ local function handle_balance_command(rawMessage)
     end
 
     print_balance_result(response, nameByGuid, clientNumByGuid)
+    et.G_globalSound("sound/osp/goat.wav")
 end
 
 function et_InitGame(levelTime, randomSeed, restart)
