@@ -1,8 +1,11 @@
 ﻿@inherits LayoutComponentBase
 @using Microsoft.AspNetCore.Hosting
+@using Microsoft.Extensions.Options
 @using MudBlazor
+@using PappaETStats.Server.Options
 @inject NavigationManager Nav
 @inject IWebHostEnvironment Env
+@inject IOptions<DiscordOptions> Discord
 
 <MudThemeProvider Theme="@_theme" IsDarkMode="true" />
 <MudPopoverProvider />
@@ -16,6 +19,20 @@
             <MudLink Href="/" Underline="Underline.None" Color="Color.Inherit">PappaETStats</MudLink>
         </MudText>
         <MudSpacer />
+        <AuthorizeView>
+            <Authorized>
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" Href="/settings" StartIcon="@Icons.Material.Filled.Settings">
+                    @context.User.Identity?.Name
+                </MudButton>
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" Href="/auth/logout">Logout</MudButton>
+            </Authorized>
+            <NotAuthorized>
+                @if (_discordLoginEnabled)
+                {
+                    <MudButton Variant="Variant.Text" Color="Color.Inherit" Href="@LoginUrl">Login with Discord</MudButton>
+                }
+            </NotAuthorized>
+        </AuthorizeView>
         @if (Env.IsDevelopment())
         {
             <MudButton Variant="Variant.Text" Color="Color.Inherit" Href="/swagger" Target="_blank">Swagger</MudButton>
@@ -24,6 +41,7 @@
 
     <MudMainContent>
         <MudContainer MaxWidth="MaxWidth.Large" Class="pa-4">
+            <DiscordLinkPrompt />
             @Body
         </MudContainer>
     </MudMainContent>
@@ -76,4 +94,16 @@
 
     private void GoHome()
         => Nav.NavigateTo("/");
+
+    private bool _discordLoginEnabled;
+
+    private string LoginUrl
+        => $"/auth/login/discord?returnUrl={Uri.EscapeDataString(new Uri(Nav.Uri).PathAndQuery)}";
+
+    protected override void OnInitialized()
+    {
+        _discordLoginEnabled =
+            !string.IsNullOrWhiteSpace(Discord.Value.ClientId) &&
+            !string.IsNullOrWhiteSpace(Discord.Value.ClientSecret);
+    }
 }

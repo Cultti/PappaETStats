@@ -1,3 +1,6 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
@@ -44,6 +47,60 @@ builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminO
 builder.Services.Configure<DbOptions>(builder.Configuration.GetSection(DbOptions.SectionName));
 builder.Services.Configure<DemoStorageOptions>(builder.Configuration.GetSection(DemoStorageOptions.SectionName));
 builder.Services.Configure<WebhookOptions>(builder.Configuration.GetSection(WebhookOptions.SectionName));
+builder.Services.Configure<DiscordOptions>(builder.Configuration.GetSection(DiscordOptions.SectionName));
+
+// Discord OAuth2 login (cookie session). Login is disabled unless ClientId/ClientSecret are configured.
+var discordOptions = builder.Configuration.GetSection(DiscordOptions.SectionName).Get<DiscordOptions>() ?? new DiscordOptions();
+var discordLoginEnabled =
+    !string.IsNullOrWhiteSpace(discordOptions.ClientId) &&
+    !string.IsNullOrWhiteSpace(discordOptions.ClientSecret);
+
+var authBuilder = builder.Services
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/auth/login/discord";
+        options.LogoutPath = "/auth/logout";
+        options.ExpireTimeSpan = TimeSpan.FromDays(30);
+        options.SlidingExpiration = true;
+    });
+
+if (discordLoginEnabled)
+{
+    authBuilder.AddOAuth("Discord", options =>
+    {
+        options.ClientId = discordOptions.ClientId!;
+        options.ClientSecret = discordOptions.ClientSecret!;
+        options.CallbackPath = "/auth/callback/discord";
+
+        options.AuthorizationEndpoint = "https://discord.com/oauth2/authorize";
+        options.TokenEndpoint = "https://discord.com/api/oauth2/token";
+        options.UserInformationEndpoint = "https://discord.com/api/users/@me";
+
+        options.Scope.Add("identify");
+        options.SaveTokens = false;
+
+        options.ClaimActions.MapJsonKey(ClaimTypes.NameIdentifier, "id");
+        options.ClaimActions.MapJsonKey(ClaimTypes.Name, "username");
+        options.ClaimActions.MapJsonKey("urn:discord:global_name", "global_name");
+
+        options.Events.OnCreatingTicket = async context =>
+        {
+            using var userRequest = new HttpRequestMessage(HttpMethod.Get, context.Options.UserInformationEndpoint);
+            userRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", context.AccessToken);
+
+            using var response = await context.Backchannel.SendAsync(userRequest, context.HttpContext.RequestAborted);
+            response.EnsureSuccessStatusCode();
+
+            using var user = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(context.HttpContext.RequestAborted));
+            context.RunClaimActions(user.RootElement);
+        };
+    });
+}
+
+builder.Services.AddAuthorization();
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddScoped<RegistrationTokenService>();
 
 builder.Services.AddHttpClient("Webhook", client =>
 {
@@ -129,12 +186,20 @@ app.UseHttpsRedirection();
 
 app.UseStaticFiles();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.UseAntiforgery();
 
 app.MapIngestEndpoints();
 app.MapAdminEndpoints();
 app.MapDemoEndpoints();
 app.MapTeamBalanceEndpoints();
+app.MapRegistrationEndpoints();
+if (discordLoginEnabled)
+{
+    app.MapAuthEndpoints();
+}
 
 if (app.Environment.IsDevelopment())
 {

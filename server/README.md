@@ -41,6 +41,8 @@ Suggested environment variables:
 - `Pappa__Webhook__Url` – full webhook URL (optional)
 - `Pappa__Webhook__Token` – webhook bearer token (optional)
 - `Pappa__Webhook__FrontendBaseUrl` – public base URL used to build a link to MatchDetails (optional)
+- `Pappa__Discord__ClientId` – Discord OAuth2 application client id (optional; leave empty to disable Discord login)
+- `Pappa__Discord__ClientSecret` – Discord OAuth2 application client secret
 
 Example MariaDB connection string (typical):
 
@@ -74,6 +76,81 @@ overall rating is used instead.
 Existing history can be backfilled into the format-specific tracks with
 `POST /api/admin/skillratings/recalculate` (admin token), which wipes ratings and replays all
 completed matches chronologically.
+
+### Discord login & account linking
+
+Users can log in with Discord OAuth2 (`/auth/login/discord`). Login is enabled when
+`Pappa__Discord__ClientId` and `Pappa__Discord__ClientSecret` are configured. The Discord
+application must whitelist the redirect URI `{your-base-url}/auth/callback/discord`.
+
+When a logged-in user is not yet linked to an ET player, the UI shows a prompt with an
+in-game console command containing a one-time registration token:
+
+```
+/register 5f3e8a2b-1c4d-4e6f-9a7b-0c1d2e3f4a5b
+```
+
+The game server should capture that command (ET GUID of the player + the token) and forward
+it to the registration endpoint below.
+
+Logged-in users who are linked can toggle **"Move automatically to a voice channel"** on the
+`/settings` page. When disabled, their Discord id is excluded from the move-teams webhook
+payload (see below).
+
+### ET GUID registration
+
+- `POST /api/players/register`
+  - Headers:
+    - `Authorization: Bearer <token>` (same token as ingest)
+    - `Content-Type: application/json`
+  - Body:
+    - `etGuid` – the player's ET GUID (32 hex chars, no dashes) as seen by the game server
+    - `token` – the registration token the user typed in the in-game `/register` command
+
+Example:
+
+```bash
+curl -X POST http://localhost:5080/api/players/register \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-ingest-token" \
+  -d '{"etGuid": "0123456789abcdef0123456789abcdef", "token": "5f3e8a2b-1c4d-4e6f-9a7b-0c1d2e3f4a5b"}'
+```
+
+Responses (all bodies are JSON; error bodies contain an `error` message suitable for showing to the user):
+
+| Status | Body | Meaning |
+| --- | --- | --- |
+| `200 OK` | `{ "message", "etGuid", "discordId" }` | Linked successfully (or was already linked to the same Discord account). |
+| `400 Bad Request` | `{ "error": "etGuid is required" }` | Missing `etGuid`. |
+| `400 Bad Request` | `{ "error": "Invalid etGuid format (expected 32 hex chars)" }` | Malformed ET GUID. |
+| `400 Bad Request` | `{ "error": "token is required" }` | Missing `token`. |
+| `400 Bad Request` | `{ "error": "Invalid token format. ..." }` | Token is not a valid GUID. |
+| `401 Unauthorized` | – | Missing/wrong ingest bearer token. |
+| `404 Not Found` | `{ "error": "Unknown registration token. ..." }` | Token does not exist. |
+| `404 Not Found` | `{ "error": "No player found with this ET GUID. ..." }` | The ET GUID has no stats yet; play a match first. |
+| `409 Conflict` | `{ "error": "This registration token has already been used. ..." }` | Token was already consumed. |
+| `409 Conflict` | `{ "error": "This player is already linked to a different Discord account." }` | ET GUID taken by another Discord user. |
+| `409 Conflict` | `{ "error": "Your Discord account is already linked to another player." }` | Discord user already linked to a different ET GUID. |
+
+### Move-teams webhook (bot integration)
+
+After `POST /api/skillratings/balance-teams` computes the balanced teams, the server POSTs the
+Discord ids of the linked players to the bot so it can move them to their team voice channels.
+The URL is derived from `Pappa__Webhook__Url` (same host, path `/webhook/move-teams`), and the
+`Pappa__Webhook__Token` is sent as the `X-Webhook-Secret` header:
+
+```bash
+POST {webhook-host}/webhook/move-teams
+Content-Type: application/json
+X-Webhook-Secret: your-secret
+
+{"axis": ["123", "321"], "allies": ["567", "542"]}
+```
+
+`axis` contains the Discord ids of `team1` and `allies` those of `team2` from the balance
+response. Players without a linked Discord account, or with the "Move automatically to a
+voice channel" setting disabled, are omitted. The call is skipped when no webhook URL is
+configured or when no player in the request has a Discord id to send.
 
 ## What gets saved
 

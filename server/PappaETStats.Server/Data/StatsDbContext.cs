@@ -14,6 +14,7 @@ public sealed class StatsDbContext(DbContextOptions<StatsDbContext> options) : D
     public DbSet<MatchPlayerWeaponStat> MatchPlayerWeaponStats => Set<MatchPlayerWeaponStat>();
     public DbSet<MatchPlayerClassStat> MatchPlayerClassStats => Set<MatchPlayerClassStat>();
     public DbSet<MatchObituary> MatchObituaries => Set<MatchObituary>();
+    public DbSet<PlayerRegistrationToken> PlayerRegistrationTokens => Set<PlayerRegistrationToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -89,6 +90,29 @@ public sealed class StatsDbContext(DbContextOptions<StatsDbContext> options) : D
         modelBuilder.Entity<Player>()
             .Property(p => p.Guid)
             .HasColumnType("varchar(64)");
+
+        modelBuilder.Entity<Player>()
+            .Property(p => p.DiscordId)
+            .HasColumnType("varchar(64)");
+
+        modelBuilder.Entity<Player>()
+            .Property(p => p.AutoMoveToVoice)
+            .HasDefaultValue(true);
+
+        modelBuilder.Entity<Player>()
+            .HasIndex(p => p.DiscordId)
+            .IsUnique();
+
+        modelBuilder.Entity<PlayerRegistrationToken>()
+            .Property(t => t.DiscordId)
+            .HasColumnType("varchar(64)");
+
+        modelBuilder.Entity<PlayerRegistrationToken>()
+            .Property(t => t.UsedByEtGuid)
+            .HasColumnType("varchar(64)");
+
+        modelBuilder.Entity<PlayerRegistrationToken>()
+            .HasIndex(t => t.DiscordId);
 
         base.OnModelCreating(modelBuilder);
     }
