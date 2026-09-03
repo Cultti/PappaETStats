@@ -91,7 +91,11 @@ in-game console command containing a one-time registration token:
 ```
 
 The game server should capture that command (ET GUID of the player + the token) and forward
-it to the registration endpoint below.
+it to the registration endpoint below. The Lua module
+[et-server/papparegister.lua](../et-server/papparegister.lua) implements this: it handles
+`/register <token>` (console) and `!register <token>` (chat), posts the player's `cl_guid`
+plus the token to the endpoint, and prints the backend's success/error message to the player.
+Configure `REGISTER_API_URL` and `AUTH_TOKEN` at the top of the script.
 
 Logged-in users who are linked can toggle **"Move automatically to a voice channel"** on the
 `/settings` page. When disabled, their Discord id is excluded from the move-teams webhook
