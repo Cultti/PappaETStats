@@ -204,7 +204,22 @@ public static class AdminEndpoints
             var options = new SkillRatingOptions();
             var calculator = new SkillRatingCalculator(options);
 
-            var deletedPlayers = await db.Players.ExecuteDeleteAsync(cancellationToken);
+            // Reset only ratings: account links and preferences must survive a replay,
+            // including for players with no eligible matches remaining in history.
+            var playerRows = await db.Players
+                .ToDictionaryAsync(p => p.Guid, StringComparer.OrdinalIgnoreCase, cancellationToken);
+            var resetPlayers = playerRows.Count;
+            foreach (var player in playerRows.Values)
+            {
+                player.Mu = options.Mu;
+                player.Sigma = options.Sigma;
+                // Null denotes no rated history in a format; ApplyMatch initializes
+                // that track from the defaults when its first match is replayed.
+                player.MuSmall = null;
+                player.SigmaSmall = null;
+                player.MuLarge = null;
+                player.SigmaLarge = null;
+            }
 
             // Replay completed matches in chronological order (round 2 ingest time).
             var completedMatchIdsInOrder = await db.MatchRounds
@@ -217,8 +232,6 @@ public static class AdminEndpoints
             var matchIds = completedMatchIdsInOrder
                 .Distinct()
                 .ToList();
-
-            var playerRows = new Dictionary<string, Player>(StringComparer.OrdinalIgnoreCase);
 
             var processedMatches = 0;
             var skippedMissingRounds = 0;
@@ -322,7 +335,8 @@ public static class AdminEndpoints
 
             return new
             {
-                deletedPlayers,
+                deletedPlayers = 0,
+                resetPlayers,
                 processedMatches,
                 skippedMissingRounds,
                 skippedDraws,

@@ -74,8 +74,10 @@ tracks use identical calculation logic. If a player has no history in the reques
 overall rating is used instead.
 
 Existing history can be backfilled into the format-specific tracks with
-`POST /api/admin/skillratings/recalculate` (admin token), which wipes ratings and replays all
-completed matches chronologically.
+`POST /api/admin/skillratings/recalculate` (admin token), which resets overall ratings to their
+initial defaults, clears format-specific ratings, and replays completed matches chronologically.
+Existing players, Discord links, and voice preferences are preserved, including players with no
+eligible matches. Format-specific ratings remain unset until a match in that format is replayed.
 
 ### Discord login & account linking
 
