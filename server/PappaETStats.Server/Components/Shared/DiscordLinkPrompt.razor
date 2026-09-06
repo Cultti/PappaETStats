@@ -1,0 +1,60 @@
+@using System.Security.Claims
+@using Microsoft.Extensions.Options
+@using PappaETStats.Server.Options
+@using PappaETStats.Server.Services
+@inject RegistrationTokenService RegistrationTokens
+@inject IOptions<DiscordOptions> Discord
+
+<AuthorizeView>
+    <Authorized>
+        @if (_loaded && _linkedEtGuid is null && _token is not null)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-4">
+                <MudText Typo="Typo.body1">
+                    Your Discord account is not linked to a player yet. Join the ET server and run this console command:
+                </MudText>
+                <MudText Typo="Typo.body1" Class="mt-2" Style="font-family: monospace;">
+                    /register @_token
+                </MudText>
+            </MudAlert>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool _loaded;
+    private string? _linkedEtGuid;
+    private Guid? _token;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is null)
+        {
+            return;
+        }
+
+        var state = await AuthState;
+        var user = state.User;
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            return;
+        }
+
+        var discordId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(discordId))
+        {
+            return;
+        }
+
+        _linkedEtGuid = await RegistrationTokens.GetLinkedEtGuidAsync(discordId);
+        if (_linkedEtGuid is null)
+        {
+            _token = await RegistrationTokens.GetOrCreateTokenAsync(discordId, user.Identity.Name);
+        }
+
+        _loaded = true;
+    }
+}

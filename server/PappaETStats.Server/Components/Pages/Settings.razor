@@ -1,0 +1,85 @@
+@page "/settings"
+@using System.Security.Claims
+@using PappaETStats.Server.Services
+@inject RegistrationTokenService RegistrationTokens
+@inject NavigationManager Nav
+
+<PageTitle>Settings - PappaETStats</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Settings</MudText>
+
+<AuthorizeView>
+    <Authorized>
+        <DiscordLinkPrompt />
+
+        @if (_linkedEtGuid is not null)
+        {
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h6" Class="mb-2">Discord</MudText>
+                <MudText Typo="Typo.body2" Class="mb-4">
+                    Linked player GUID: <span style="font-family: monospace;">@_linkedEtGuid</span>
+                </MudText>
+                <MudSwitch T="bool"
+                           Value="_autoMoveToVoice"
+                           ValueChanged="OnAutoMoveChangedAsync"
+                           Color="Color.Primary"
+                           Label="Move automatically to a voice channel" />
+                <MudText Typo="Typo.caption" Class="mt-1">
+                    When enabled, the Discord bot moves you to your team's voice channel after teams are balanced.
+                </MudText>
+            </MudPaper>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">
+            You need to <MudLink Href="/auth/login/discord?returnUrl=/settings">log in with Discord</MudLink> to manage your settings.
+        </MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private string? _discordId;
+    private string? _linkedEtGuid;
+    private bool _autoMoveToVoice;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is null)
+        {
+            return;
+        }
+
+        var state = await AuthState;
+        var user = state.User;
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            return;
+        }
+
+        _discordId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(_discordId))
+        {
+            return;
+        }
+
+        _linkedEtGuid = await RegistrationTokens.GetLinkedEtGuidAsync(_discordId);
+        if (_linkedEtGuid is not null)
+        {
+            _autoMoveToVoice = await RegistrationTokens.GetAutoMoveToVoiceAsync(_discordId) ?? true;
+        }
+    }
+
+    private async Task OnAutoMoveChangedAsync(bool enabled)
+    {
+        if (string.IsNullOrEmpty(_discordId))
+        {
+            return;
+        }
+
+        _autoMoveToVoice = enabled;
+        await RegistrationTokens.SetAutoMoveToVoiceAsync(_discordId, enabled);
+    }
+}

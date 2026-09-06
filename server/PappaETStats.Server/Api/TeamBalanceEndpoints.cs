@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using PappaETStats.SkillRating;
@@ -54,6 +55,9 @@ public static class TeamBalanceEndpoints
         HttpRequest request,
         IDbContextFactory<StatsDbContext> dbFactory,
         IOptions<IngestOptions> ingestOptions,
+        IOptions<WebhookOptions> webhookOptions,
+        IHttpClientFactory httpClientFactory,
+        ILoggerFactory loggerFactory,
         BalanceTeamsRequest body,
         CancellationToken cancellationToken)
     {
@@ -208,6 +212,27 @@ public static class TeamBalanceEndpoints
         // Use damageFloor=1 to get equal weights (since we don't have per-match damage here).
         var pTeam1 = calculator.CalculateWinProbability(states, Team.Axis, damageFloor: 1);
 
+        // Team 1 is Axis, Team 2 is Allies (matches the rating states above).
+        // Only include players who linked their Discord account and have auto-move enabled.
+        static IReadOnlyList<string> DiscordIdsFor(
+            IEnumerable<Candidate> team,
+            IReadOnlyDictionary<string, Player> players)
+        {
+            return team
+                .Select(c => players.TryGetValue(c.GuidString, out var p) ? p : null)
+                .Where(p => p is not null && !string.IsNullOrEmpty(p.DiscordId) && p.AutoMoveToVoice)
+                .Select(p => p!.DiscordId!)
+                .ToList();
+        }
+
+        await TrySendMoveTeamsWebhookAsync(
+            httpClientFactory,
+            webhookOptions.Value,
+            loggerFactory.CreateLogger("MoveTeamsWebhook"),
+            axisDiscordIds: DiscordIdsFor(team1, existing),
+            alliesDiscordIds: DiscordIdsFor(team2, existing),
+            cancellationToken);
+
         BalancedTeam ToTeam(IEnumerable<Candidate> team) => new(
             Players: team
                 .OrderByDescending(p => p.Conservative)
@@ -225,6 +250,77 @@ public static class TeamBalanceEndpoints
             winProbabilityTeam1 = pTeam1,
             winProbabilityTeam2 = 1.0 - pTeam1,
         });
+    }
+
+    private static async Task TrySendMoveTeamsWebhookAsync(
+        IHttpClientFactory httpClientFactory,
+        WebhookOptions options,
+        ILogger logger,
+        IReadOnlyList<string> axisDiscordIds,
+        IReadOnlyList<string> alliesDiscordIds,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(options.Url))
+        {
+            return;
+        }
+
+        if (axisDiscordIds.Count == 0 && alliesDiscordIds.Count == 0)
+        {
+            return;
+        }
+
+        // The bot exposes /webhook/move-teams on the same host as the match-completed webhook.
+        if (!Uri.TryCreate(options.Url.Trim(), UriKind.Absolute, out var webhookUri))
+        {
+            logger.LogWarning("Cannot derive move-teams URL: webhook URL {Url} is not a valid absolute URL.", options.Url);
+            return;
+        }
+
+        var moveTeamsUrl = new Uri(webhookUri, "/webhook/move-teams");
+
+        var payload = new
+        {
+            axis = axisDiscordIds,
+            allies = alliesDiscordIds,
+        };
+
+        try
+        {
+            var client = httpClientFactory.CreateClient("Webhook");
+
+            using var message = new HttpRequestMessage(HttpMethod.Post, moveTeamsUrl);
+            message.Content = JsonContent.Create(payload);
+
+            if (!string.IsNullOrWhiteSpace(options.Token))
+            {
+                message.Headers.Add("X-Webhook-Secret", options.Token.Trim());
+            }
+
+            using var response = await client.SendAsync(message, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var responseBody = string.Empty;
+                try
+                {
+                    responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                logger.LogWarning(
+                    "Move-teams webhook POST to {Url} failed with {StatusCode}. Body: {Body}",
+                    moveTeamsUrl,
+                    (int)response.StatusCode,
+                    responseBody);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Move-teams webhook POST to {Url} failed.", moveTeamsUrl);
+        }
     }
 
     private static (ulong mask, double objective, double conservativeDiff) FindBestSplitMask(
