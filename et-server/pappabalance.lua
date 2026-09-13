@@ -7,6 +7,8 @@
 --   !balance 3on3|4on4        (use the 3on3/4on4 skill ratings)
 --   !balance 5on5|6on6        (use the 5on5/6on6 skill ratings)
 --   !balance 5on5 2.5         (tokens can be combined in any order)
+--   !voice                   (move yourself to your current team's voice channel)
+--   !voiceall                (referees: move all active players)
 --
 -- Only allowed during et.GS_WARMUP. Any player can run it.
 -- Posts active (Axis/Allies) player GUIDs to backend and prints suggested teams.
@@ -17,6 +19,15 @@ local version = "1.0-dev"
 
 -- Backend endpoint
 local BALANCE_API_URL = "http://localhost:5080/api/skillratings/balance-teams"
+local VOICE_API_URL = "http://localhost:5080/api/voice/move"
+local VOICE_COOLDOWN_SECONDS = 10
+
+-- Voice HTTP requests run in a background POSIX shell (Linux ET server + curl).
+-- Replies are polled from et_RunFrame; no network waits run on the game thread.
+local voiceRequests = {}
+local voiceLastUsed = {}
+local voiceAllLastUsed = nil
+local nextVoicePoll = 0
 
 -- Token used by backend (same token as ingest endpoints).
 -- Keep empty to omit Authorization header.
@@ -137,6 +148,13 @@ local function say_all(message)
     -- Escape double quotes for server command.
     msg = msg:gsub('\\', '\\\\'):gsub('"', '\\"')
     et.trap_SendServerCommand(-1, string.format('chat "%s"', msg))
+end
+
+local function say_client(clientNum, message)
+    -- Bot errors are untrusted text; keep them to one bounded chat command.
+    local msg = tostring(message or ""):gsub("[%c]", " "):sub(1, 700)
+    msg = msg:gsub('\\', '\\\\'):gsub('"', '\\"')
+    et.trap_SendServerCommand(clientNum, string.format('chat "^3Voice:^7 %s"', msg))
 end
 
 local function safe_number(v)
@@ -280,8 +298,8 @@ local function executeCurlJsonWithHttpStatus(curl_cmd, body_file)
 end
 
 local function is_warmup_only()
-    local gamestate = safe_number(trap_Cvar_Get("gamestate"))
-    local roundNumber = safe_number(trap_Cvar_Get("g_currentRound"))
+    local gamestate = tonumber(trap_Cvar_Get("gamestate"))
+    local roundNumber = tonumber(trap_Cvar_Get("g_currentRound"))
     return gamestate == et.GS_WARMUP and roundNumber == 0
 end
 
@@ -334,6 +352,176 @@ local function collect_active_players()
     end
 
     return guids, nameByGuid, clientNumByGuid
+end
+
+local function shell_quote(value)
+    return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
+end
+
+local function cleanup_voice_request(request)
+    for _, path in ipairs(request.files) do
+        os.remove(path)
+    end
+end
+
+local function start_voice_request(players, recipients, requester)
+    if not json then
+        return nil, "dkjson missing"
+    end
+    if package.config:sub(1, 1) == "\\" then
+        return nil, "Background voice requests require a Linux/POSIX game server."
+    end
+
+    local base = os.tmpname()
+    local request = {
+        payload = base, body = base .. ".body", status = base .. ".status",
+        done = base .. ".done", recipients = recipients, requester = requester,
+        started = os.time()
+    }
+    request.files = { request.payload, request.body, request.status, request.done }
+    local file = io.open(request.payload, "w")
+    if not file then
+        return nil, "Could not create voice request file."
+    end
+    file:write(json.encode({ players = players }))
+    file:close()
+
+    local curl = "curl -sS --connect-timeout 2 --max-time 15 --compressed -X POST"
+        .. " -H " .. shell_quote("Authorization: Bearer " .. AUTH_TOKEN)
+        .. " -H 'Content-Type: application/json' --data-binary " .. shell_quote("@" .. request.payload)
+        .. " -o " .. shell_quote(request.body) .. " -w '%{http_code}' " .. shell_quote(VOICE_API_URL)
+        .. " > " .. shell_quote(request.status)
+    local cleanup = {}
+    for _, path in ipairs(request.files) do
+        table.insert(cleanup, shell_quote(path))
+    end
+    -- Mark completion only after curl closes the response. The worker also cleans up
+    -- if a map change unloads this Lua VM before it can consume the reply.
+    local command = "( " .. curl .. "; printf '%s' \"$?\" > " .. shell_quote(request.done)
+        .. "; sleep 30; rm -f -- " .. table.concat(cleanup, " ")
+        .. " ) </dev/null >/dev/null 2>&1 &"
+    local r1, r2, r3 = os.execute(command)
+    if not os_execute_ok(r1, r2, r3) then
+        cleanup_voice_request(request)
+        return nil, "Could not start voice request."
+    end
+    table.insert(voiceRequests, request)
+    return true
+end
+
+local function recipient_is_connected(recipient)
+    return gentity_get(recipient.clientNum, "pers.connected") == CON_CONNECTED
+        and guid_for_client(recipient.clientNum) == recipient.guid
+end
+
+local function handle_voice_command(clientNum, moveAll)
+    if not is_warmup_only() then
+        say_client(clientNum, "!voice and !voiceall are only allowed in warmup before the match starts.")
+        return
+    end
+    if moveAll and safe_number(gentity_get(clientNum, "sess.referee")) <= 0 then
+        say_client(clientNum, "Only referees can use !voiceall.")
+        return
+    end
+
+    local now = os.time()
+    local callerGuid = guid_for_client(clientNum)
+    local lastUsed = moveAll and voiceAllLastUsed or voiceLastUsed[callerGuid]
+    if lastUsed and now - lastUsed < VOICE_COOLDOWN_SECONDS then
+        say_client(clientNum, "Please wait a few seconds before requesting another voice move.")
+        return
+    end
+
+    local players, recipients, selected = {}, {}, {}
+    for slot = 0, maxClients - 1 do
+        if (moveAll or slot == clientNum) and gentity_get(slot, "pers.connected") == CON_CONNECTED then
+            local team = safe_number(gentity_get(slot, "sess.sessionTeam"))
+            local guid = guid_for_client(slot)
+            if (team == 1 or team == 2) and guid ~= "" and not selected[guid] then
+                local teamName = team == 1 and "axis" or "allies"
+                table.insert(players, { guid = guid, team = teamName })
+                table.insert(recipients, { guid = guid, clientNum = slot, team = teamName, teamNumber = team })
+                selected[guid] = true
+            end
+        end
+    end
+    if #players == 0 then
+        say_client(clientNum, "Join Axis or Allies first; there are no eligible players to move.")
+        return
+    end
+    for _, pending in ipairs(voiceRequests) do
+        for _, recipient in ipairs(pending.recipients) do
+            if selected[recipient.guid] then
+                say_client(clientNum, "A voice move for these players is already in progress.")
+                return
+            end
+        end
+    end
+
+    local requester = { clientNum = clientNum, guid = callerGuid, moveAll = moveAll }
+    local ok, err = start_voice_request(players, recipients, requester)
+    if not ok then
+        say_client(clientNum, err)
+        return
+    end
+    voiceLastUsed[callerGuid] = now
+    if moveAll then
+        voiceAllLastUsed = now
+        say_all("^3Voice:^7 " .. name_for_client(clientNum) .. "^7 used !voiceall to move everyone to their team's voice channel.")
+    else
+        say_client(clientNum, "Requesting your team's voice channel...")
+    end
+end
+
+function et_RunFrame(levelTime)
+    if levelTime < nextVoicePoll then return end
+    nextVoicePoll = levelTime + 200
+    for i = #voiceRequests, 1, -1 do
+        local request = voiceRequests[i]
+        local exitCode = tonumber(read_file_all(request.done))
+        if exitCode or os.time() - request.started > 20 then
+            local response, failure
+            local status = tonumber(read_file_all(request.status))
+            if exitCode ~= 0 then
+                failure = "Voice request timed out or failed. Check Discord before retrying."
+            elseif status ~= 200 then
+                failure = "Voice API request failed (HTTP " .. tostring(status or "unknown") .. ")."
+            else
+                response = json.decode(read_file_all(request.body))
+                if type(response) ~= "table" or type(response.results) ~= "table" then
+                    failure = "Voice API returned an invalid response."
+                end
+            end
+
+            local moved = 0
+            for _, recipient in ipairs(request.recipients) do
+                local result
+                if not failure then
+                    for _, candidate in ipairs(response.results) do
+                        if type(candidate) == "table" and tostring(candidate.guid):upper() == recipient.guid
+                            and candidate.team == recipient.team then
+                            result = candidate
+                            break
+                        end
+                    end
+                end
+                if result and result.moved == true then moved = moved + 1 end
+                if recipient_is_connected(recipient) then
+                    if safe_number(gentity_get(recipient.clientNum, "sess.sessionTeam")) ~= recipient.teamNumber then
+                        say_client(recipient.clientNum, "Your team changed while the voice request was pending. Check your channel in Discord.")
+                    else
+                        say_client(recipient.clientNum, failure or (result and result.message) or "Voice API did not report your move. Check Discord.")
+                    end
+                end
+            end
+            if request.requester.moveAll and recipient_is_connected(request.requester) then
+                say_client(request.requester.clientNum, string.format("!voiceall: %d/%d moves confirmed. Each player received their result.", moved, #request.recipients))
+            end
+            -- In-flight workers own cleanup on timeout; avoid deleting files they still use.
+            if exitCode then cleanup_voice_request(request) end
+            table.remove(voiceRequests, i)
+        end
+    end
 end
 
 local function build_payload_json(guids, sigmaMultiplier, mode)
@@ -482,9 +670,14 @@ local function print_balance_result(response, nameByGuid, clientNumByGuid)
 
     apply_team_assignments(t1Players, t2Players, clientNumByGuid)
     say_all("^3Balance:^7 teams applied (Team1->Axis, Team2->Allies)")
+    say_all("^3Voice:^7 Type !voice in chat during warmup to move to your team's voice channel.")
 end
 
 local function handle_balance_command(rawMessage)
+    if #voiceRequests > 0 then
+        say_all("^3Balance:^7 Please wait for pending voice moves before balancing again.")
+        return
+    end
     if not is_warmup_only() then
         say_all("^1!balance^7 is only allowed in warmup")
         return
@@ -562,6 +755,13 @@ function et_ClientCommand(clientNum, command)
 
     local msg = et.ConcatArgs(1) or ""
     msg = trim(msg)
+
+    local voiceCommand = msg:lower()
+    if voiceCommand == "!voice" or voiceCommand == "!voiceall" then
+        handle_voice_command(clientNum, voiceCommand == "!voiceall")
+        -- Preserve the normal chat message, including the sender's own chat echo.
+        return 0
+    end
 
     if starts_with(msg, "!balance") then
         handle_balance_command(msg)

@@ -99,9 +99,8 @@ it to the registration endpoint below. The Lua module
 plus the token to the endpoint, and prints the backend's success/error message to the player.
 Configure `REGISTER_API_URL` and `AUTH_TOKEN` at the top of the script.
 
-Logged-in users who are linked can toggle **"Move automatically to a voice channel"** on the
-`/settings` page. When disabled, their Discord id is excluded from the move-teams webhook
-payload (see below).
+The `/settings` page shows the linked ET GUID and instructions for `!voice`.
+Voice movement is requested in game chat; balancing never moves anyone in Discord.
 
 ### ET GUID registration
 
@@ -140,8 +139,60 @@ Responses (all bodies are JSON; error bodies contain an `error` message suitable
 
 ### Move-teams webhook (bot integration)
 
-After `POST /api/skillratings/balance-teams` computes the balanced teams, the server POSTs the
-Discord ids of the linked players to the bot so it can move them to their team voice channels.
+`POST /api/skillratings/balance-teams` only balances in-game teams. After applying the teams,
+`pappabalance.lua` reminds players to type `!voice` in chat.
+
+- `!voice` moves only the caller to their **current** in-game team's Discord voice channel.
+- `!voiceall` requires ET referee status (`sess.referee`) and moves all connected Axis/Allies
+  players with linked Discord accounts. Spectator referees can use it too.
+- Both commands require `GS_WARMUP` and `g_currentRound == 0`. They are rejected during
+  countdown, gameplay, intermission and the second round.
+- Both command messages remain in normal chat, including the sender's chat echo.
+  Accepted `!voiceall` requests also announce the referee's name globally, even from team/buddy chat.
+- Results are sent privately to each affected player. The referee receives a confirmed-move count.
+  Unregistered players are told which channel to join and directed to `https://et.aukko.net`.
+
+Deploy the updated backend and [pappabalance.lua](../et-server/pappabalance.lua) together.
+Configure `VOICE_API_URL` and `AUTH_TOKEN` in Lua. The backend requires a **nonempty** matching
+`Pappa__Ingest__Token` for voice requests, even if other ingest endpoints allow anonymous calls.
+The obsolete auto-move setting and database column are removed by the `RemoveAutoMoveToVoice`
+migration, applied automatically on backend startup. Linked Discord accounts are preserved.
+
+Voice requests use background `curl` on a Linux/POSIX game server, with a 2-second connection
+timeout and a 15-second overall timeout. `et_RunFrame` checks completion files every 200 ms
+without waiting for HTTP. This requires `dkjson`, `curl`, a POSIX shell, and writable OS temp
+files; Windows game servers receive an unsupported-platform message instead of a blocking fallback.
+Requests are not retried automatically. A 10-second cooldown and rejection of overlapping moves
+limit repeated commands. Rebalancing waits for pending voice requests to finish. Replies are
+checked against the player's GUID and current team to avoid stale confirmations after slot reuse
+or team changes. Background workers clean up their files even when a map change unloads Lua.
+A request already sent to the bot can finish after warmup ends; the existing bot API cannot cancel
+an in-flight Discord move. New requests are always rejected once warmup ends.
+
+Set these optional backend values to the actual channel names displayed in Discord:
+
+- `Pappa__Webhook__AxisVoiceChannelName` (default: `Axis voice channel`)
+- `Pappa__Webhook__AlliesVoiceChannelName` (default: `Allies voice channel`)
+
+These are display names for chat feedback. The bot's existing channel-ID configuration controls
+where players are moved.
+
+The game server sends current team assignments to the authenticated endpoint:
+
+```http
+POST /api/voice/move
+Authorization: Bearer your-ingest-token
+Content-Type: application/json
+
+{"players":[{"guid":"0123456789abcdef0123456789abcdef","team":"axis"}]}
+```
+
+The backend trusts the authenticated game server to enforce command ownership, referee status,
+and warmup restrictions. The request accepts 1–64 unique GUIDs and teams `axis` or `allies`.
+It returns HTTP 200 with `results`, each containing `guid`, `team`, `channel`, `moved`, and a
+player-facing `message`. Invalid input returns 400; missing or invalid authentication returns 401.
+Only requested, registered players are sent to the bot; the old auto-move preference has no effect.
+
 The URL is derived from `Pappa__Webhook__Url` (same host, path `/webhook/move-teams`), and the
 `Pappa__Webhook__Token` is sent as the `X-Webhook-Secret` header:
 
@@ -153,10 +204,25 @@ X-Webhook-Secret: your-secret
 {"axis": ["123", "321"], "allies": ["567", "542"]}
 ```
 
-`axis` contains the Discord ids of `team1` and `allies` those of `team2` from the balance
-response. Players without a linked Discord account, or with the "Move automatically to a
-voice channel" setting disabled, are omitted. The call is skipped when no webhook URL is
-configured or when no player in the request has a Discord id to send.
+The bot returns HTTP 200 for complete success or HTTP 207 for partial failures:
+
+```json
+{"ok":false,"results":[{"user_id":"123","team":"axis","moved":true},{"user_id":"567","team":"allies","moved":false,"error":"User is not connected to voice"}]}
+```
+
+Each bot result is matched by Discord ID and team. A move is reported as successful only
+when the bot confirms `moved: true`. Bot errors are included in the player's reply. Missing,
+invalid, failed or timed-out responses report that the move was not confirmed.
+
+Run regression checks from the repository root:
+
+```sh
+dotnet test server/PappaETStats.Server.Tests
+lua et-server/tests/pappabalance_test.lua
+```
+
+The tests use an isolated SQLite database, a fake bot HTTP handler and mocked ET callbacks;
+they do not contact Discord or move real players.
 
 ## What gets saved
 

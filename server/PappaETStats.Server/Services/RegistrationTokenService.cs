@@ -24,38 +24,6 @@ public sealed class RegistrationTokenService(IDbContextFactory<StatsDbContext> d
     }
 
     /// <summary>
-    /// Returns whether the linked player has "move automatically to voice channel" enabled,
-    /// or null when the Discord user is not linked to a player.
-    /// </summary>
-    public async Task<bool?> GetAutoMoveToVoiceAsync(string discordId, CancellationToken cancellationToken = default)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        return await db.Players
-            .AsNoTracking()
-            .Where(p => p.DiscordId == discordId)
-            .Select(p => (bool?)p.AutoMoveToVoice)
-            .FirstOrDefaultAsync(cancellationToken);
-    }
-
-    /// <summary>
-    /// Updates the "move automatically to voice channel" setting for the player linked
-    /// to the Discord user. Returns false when the user is not linked to a player.
-    /// </summary>
-    public async Task<bool> SetAutoMoveToVoiceAsync(string discordId, bool enabled, CancellationToken cancellationToken = default)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var player = await db.Players.FirstOrDefaultAsync(p => p.DiscordId == discordId, cancellationToken);
-        if (player is null)
-        {
-            return false;
-        }
-
-        player.AutoMoveToVoice = enabled;
-        await db.SaveChangesAsync(cancellationToken);
-        return true;
-    }
-
-    /// <summary>
     /// Returns an unused registration token for the Discord user, creating one when needed.
     /// </summary>
     public async Task<Guid> GetOrCreateTokenAsync(string discordId, string? discordUsername, CancellationToken cancellationToken = default)

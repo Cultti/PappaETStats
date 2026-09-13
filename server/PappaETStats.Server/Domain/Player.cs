@@ -12,12 +12,6 @@ public sealed class Player
     [MaxLength(64)]
     public string? DiscordId { get; set; }
 
-    /// <summary>
-    /// When true (default), the player's Discord id is included in the move-teams
-    /// webhook so the bot moves them to their team's voice channel automatically.
-    /// </summary>
-    public bool AutoMoveToVoice { get; set; } = true;
-
     public double Mu { get; set; }
 
     public double Sigma { get; set; }

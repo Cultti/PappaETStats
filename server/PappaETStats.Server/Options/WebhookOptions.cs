@@ -16,6 +16,10 @@ public sealed class WebhookOptions
     /// </summary>
     public string? Token { get; init; }
 
+    /// <summary>Display names of the team's voice channels, used in in-game feedback.</summary>
+    public string AxisVoiceChannelName { get; init; } = "Axis voice channel";
+    public string AlliesVoiceChannelName { get; init; } = "Allies voice channel";
+
     /// <summary>
     /// Public base URL for the frontend. Used to build the MatchDetails link.
     /// Example: "https://stats.example.com".

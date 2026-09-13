@@ -195,6 +195,7 @@ app.MapIngestEndpoints();
 app.MapAdminEndpoints();
 app.MapDemoEndpoints();
 app.MapTeamBalanceEndpoints();
+app.MapVoiceEndpoints();
 app.MapRegistrationEndpoints();
 if (discordLoginEnabled)
 {

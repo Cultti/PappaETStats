@@ -96,10 +96,6 @@ public sealed class StatsDbContext(DbContextOptions<StatsDbContext> options) : D
             .HasColumnType("varchar(64)");
 
         modelBuilder.Entity<Player>()
-            .Property(p => p.AutoMoveToVoice)
-            .HasDefaultValue(true);
-
-        modelBuilder.Entity<Player>()
             .HasIndex(p => p.DiscordId)
             .IsUnique();
 

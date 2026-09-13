@@ -2,7 +2,6 @@
 @using System.Security.Claims
 @using PappaETStats.Server.Services
 @inject RegistrationTokenService RegistrationTokens
-@inject NavigationManager Nav
 
 <PageTitle>Settings - PappaETStats</PageTitle>
 
@@ -19,13 +18,9 @@
                 <MudText Typo="Typo.body2" Class="mb-4">
                     Linked player GUID: <span style="font-family: monospace;">@_linkedEtGuid</span>
                 </MudText>
-                <MudSwitch T="bool"
-                           Value="_autoMoveToVoice"
-                           ValueChanged="OnAutoMoveChangedAsync"
-                           Color="Color.Primary"
-                           Label="Move automatically to a voice channel" />
-                <MudText Typo="Typo.caption" Class="mt-1">
-                    When enabled, the Discord bot moves you to your team's voice channel after teams are balanced.
+                <MudText Typo="Typo.body2">
+                    Type !voice in game chat during warmup before the match starts to join your team's Discord voice channel.
+                    Referees can use !voiceall to move everyone to their team's voice channel.
                 </MudText>
             </MudPaper>
         }
@@ -43,7 +38,6 @@
 
     private string? _discordId;
     private string? _linkedEtGuid;
-    private bool _autoMoveToVoice;
 
     protected override async Task OnInitializedAsync()
     {
@@ -66,20 +60,5 @@
         }
 
         _linkedEtGuid = await RegistrationTokens.GetLinkedEtGuidAsync(_discordId);
-        if (_linkedEtGuid is not null)
-        {
-            _autoMoveToVoice = await RegistrationTokens.GetAutoMoveToVoiceAsync(_discordId) ?? true;
-        }
-    }
-
-    private async Task OnAutoMoveChangedAsync(bool enabled)
-    {
-        if (string.IsNullOrEmpty(_discordId))
-        {
-            return;
-        }
-
-        _autoMoveToVoice = enabled;
-        await RegistrationTokens.SetAutoMoveToVoiceAsync(_discordId, enabled);
     }
 }
