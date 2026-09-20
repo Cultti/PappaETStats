@@ -79,6 +79,20 @@ initial defaults, clears format-specific ratings, and replays completed matches 
 Existing players, Discord links, and voice preferences are preserved, including players with no
 eligible matches. Format-specific ratings remain unset until a match in that format is replayed.
 
+If a player changes operating system and receives a new ET GUID, merge the old history into the
+new GUID with the admin endpoint:
+
+```
+curl -X POST http://localhost:5080/api/admin/players/merge-guid \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"sourceGuid":"OLD_GUID","targetGuid":"NEW_GUID"}'
+```
+
+The endpoint moves match, obituary, and registration references in one transaction, rejects a
+merge when both GUIDs occur in the same match side, and recalculates all rating tracks from the
+merged history. It is safe to repeat after a successful merge.
+
 ### Discord login & account linking
 
 Users can log in with Discord OAuth2 (`/auth/login/discord`). Login is enabled when

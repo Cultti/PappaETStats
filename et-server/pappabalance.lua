@@ -1,42 +1,42 @@
 -- ============================================================================
--- PappaBalance - team balancer chat command for ET: Legacy
+-- PappaBalance - joukkueiden tasapainotuksen chat-komento ET: Legacylle
 --
--- Usage (in chat):
+-- Käyttö (chatissa):
 --   !balance
 --   !balance <sigmaMultiplier>
---   !balance 3on3|4on4        (use the 3on3/4on4 skill ratings)
---   !balance 5on5|6on6        (use the 5on5/6on6 skill ratings)
---   !balance 5on5 2.5         (tokens can be combined in any order)
---   !voice                   (move yourself to your current team's voice channel)
---   !voiceall                (referees: move all active players)
+--   !balance 3on3|4on4        (käytä 3on3/4on4-skill ratingeja)
+--   !balance 5on5|6on6        (käytä 5on5/6on6-skill ratingeja)
+--   !balance 5on5 2.5         (parametrit voi antaa missä järjestyksessä tahansa)
+--   !voice                   (siirrä itsesi nykyisen joukkueesi voice-kanavalle)
+--   !allutvittuun           (refereet: siirrä kaikki aktiiviset pelaajat)
 --
--- Only allowed during et.GS_WARMUP. Any player can run it.
--- Posts active (Axis/Allies) player GUIDs to backend and prints suggested teams.
+-- Sallittu vain et.GS_WARMUP-tilassa. Kuka tahansa pelaaja voi ajaa komennon.
+-- Lähettää aktiivisten (Axis/Allies) pelaajien GUIDit backendille ja tulostaa ehdotetut tiimit.
 -- ============================================================================
 
 local modname = "PappaBalance"
 local version = "1.0-dev"
 
--- Backend endpoint
+-- Backendin endpointit
 local BALANCE_API_URL = "http://localhost:5080/api/skillratings/balance-teams"
 local VOICE_API_URL = "http://localhost:5080/api/voice/move"
 local VOICE_COOLDOWN_SECONDS = 10
 
--- Voice HTTP requests run in a background POSIX shell (Linux ET server + curl).
--- Replies are polled from et_RunFrame; no network waits run on the game thread.
+-- Voice-HTTP-pyynnöt ajetaan taustalla POSIX-shellissa (Linux ET -serveri + curl).
+-- Vastaukset pollataan et_RunFramesta; game thread ei odota verkkopyyntöjä.
 local voiceRequests = {}
 local voiceLastUsed = {}
 local voiceAllLastUsed = nil
 local nextVoicePoll = 0
 
--- Token used by backend (same token as ingest endpoints).
--- Keep empty to omit Authorization header.
+-- Backendin käyttämä token (sama token kuin ingest-endpointeilla).
+-- Jätä tyhjäksi, jos Authorization-headeria ei lähetetä.
 local AUTH_TOKEN = "1234567890"
 
--- Request logging (ET filesystem).
--- Files are written under: <fs_homepath>/<fs_game>/<REQUEST_LOG_DIR>/
--- Ensure the directory exists on the server.
--- Set empty to disable.
+-- Pyyntöjen lokitus (ET:n tiedostojärjestelmä).
+-- Tiedostot kirjoitetaan alle: <fs_homepath>/<fs_game>/<REQUEST_LOG_DIR>/
+-- Varmista, että hakemisto on olemassa serverilla.
+-- Aseta tyhjäksi poistaaksesi käytöstä.
 local REQUEST_LOG_DIR = "pappabalance"
 
 local json_ok, json = pcall(require, "dkjson")
@@ -56,7 +56,7 @@ local function log(message)
     et.G_Print(string.format("^2[%s]^7 %s\n", modname, tostring(message)))
 end
 
--- File logging implementation copied from pappastats.lua (ET FS APIs).
+-- Tiedostolokituksen toteutus kopioitu pappastats.lua:sta (ET FS API:t).
 local function path_join(a, b)
     local sep = "/"
     if package and package.config and type(package.config) == "string" and #package.config >= 1 then
@@ -89,7 +89,7 @@ end
 
 local function writeTextFile(filename, content)
     if not et.trap_FS_FOpenFile or not et.trap_FS_Write or not et.trap_FS_FCloseFile then
-        return false, "ET FS write API not available"
+        return false, "ET FS write API ei ole saatavilla"
     end
 
     local fd = et.trap_FS_FOpenFile(filename, et.FS_WRITE)
@@ -98,7 +98,7 @@ local function writeTextFile(filename, content)
     end
 
     if not fd or fd < 0 then
-        return false, string.format("Could not open file for writing (code: %s)", tostring(fd))
+        return false, string.format("Tiedostoa ei voitu avata kirjoitusta varten (koodi: %s)", tostring(fd))
     end
 
     local bytes = tostring(content or "")
@@ -119,14 +119,14 @@ end
 local function persist_debug_file(relativePath, content)
     local ok, err = writeTextFile(relativePath, content)
     if not ok then
-        log(string.format("log write failed: %s", tostring(err)))
+        log(string.format("lokin kirjoitus epäonnistui: %s", tostring(err)))
         return false
     end
     return true
 end
 
 local function now_utc_iso()
-    -- os.date with ! prefix uses UTC in Lua.
+    -- os.date käyttää UTC-aikaa, kun formaatissa on !-prefix.
     return os.date("!%Y-%m-%dT%H:%M:%SZ")
 end
 
@@ -136,7 +136,7 @@ local function truncate_for_log(s, maxLen)
     if #s <= maxLen then
         return s
     end
-    return s:sub(1, maxLen) .. "...(truncated)"
+    return s:sub(1, maxLen) .. "...(katkaistu)"
 end
 
 local function say_all(message)
@@ -145,13 +145,13 @@ local function say_all(message)
         return
     end
 
-    -- Escape double quotes for server command.
+    -- Escapeaa lainausmerkit serverikomennolle.
     msg = msg:gsub('\\', '\\\\'):gsub('"', '\\"')
     et.trap_SendServerCommand(-1, string.format('chat "%s"', msg))
 end
 
 local function say_client(clientNum, message)
-    -- Bot errors are untrusted text; keep them to one bounded chat command.
+    -- Botin virheet ovat epäluotettua tekstiä; pidetään ne yhdessä rajatussa chat-komennossa.
     local msg = tostring(message or ""):gsub("[%c]", " "):sub(1, 700)
     msg = msg:gsub('\\', '\\\\'):gsub('"', '\\"')
     et.trap_SendServerCommand(clientNum, string.format('chat "^3Voice:^7 %s"', msg))
@@ -198,10 +198,10 @@ local function read_file_all(path)
 end
 
 local function executeCurlCommandSync(curl_cmd)
-    -- Redirect stderr so we don't lose curl error messages.
+    -- Ohjaa stderr mukaan, jotta curlin virheviestit eivät katoa.
     local p = io.popen(curl_cmd .. " 2>&1")
     if not p then
-        return nil, "Failed to start curl"
+        return nil, "curlin käynnistys epäonnistui"
     end
 
     local output = p:read("*all")
@@ -213,20 +213,20 @@ local function executeCurlCommandSync(curl_cmd)
     end
 
     if ok ~= true then
-        return nil, string.format("curl failed (exit=%s)", tostring(code))
+        return nil, string.format("curl epäonnistui (exit=%s)", tostring(code))
     end
 
     if not output or output == "" then
-        return nil, "Empty response"
+        return nil, "Tyhjä vastaus"
     end
 
     if not json then
-        return nil, "dkjson not available"
+        return nil, "dkjson ei ole saatavilla"
     end
 
     local decoded = json.decode(output)
     if not decoded then
-        return nil, "Failed to decode JSON"
+        return nil, "JSONin purku epäonnistui"
     end
 
     return decoded
@@ -235,7 +235,7 @@ end
 local function executeCurlJsonWithHttpStatus(curl_cmd, body_file)
     local p = io.popen(curl_cmd .. " 2>&1")
     if not p then
-        return nil, "Failed to start curl"
+        return nil, "curlin käynnistys epäonnistui"
     end
 
     local output = p:read("*all") or ""
@@ -251,7 +251,7 @@ local function executeCurlJsonWithHttpStatus(curl_cmd, body_file)
         if output ~= "" then
             return nil, output
         end
-        return nil, string.format("curl failed (exit=%s)", tostring(code))
+        return nil, string.format("curl epäonnistui (exit=%s)", tostring(code))
     end
 
     local status = output:match("HTTPSTATUS:(%d%d%d)")
@@ -261,37 +261,37 @@ local function executeCurlJsonWithHttpStatus(curl_cmd, body_file)
     if not httpCode then
         output = trim(output)
         if output == "" then
-            return nil, "Empty response (no HTTP status)"
+            return nil, "Tyhjä vastaus (HTTP-status puuttuu)"
         end
         return nil, output
     end
 
     if httpCode ~= 200 then
         if httpCode == 401 then
-            return nil, "Unauthorized (401) - check backend token settings"
+            return nil, "Ei oikeutta (401) - tarkista backendin token-asetukset"
         end
         if httpCode == 404 then
-            return nil, "Not found (404) - check BALANCE_API_URL"
+            return nil, "Ei löytynyt (404) - tarkista BALANCE_API_URL"
         end
 
         body = trim(body)
         if body ~= "" then
             return nil, string.format("HTTP %d - %s", httpCode, body)
         end
-        return nil, string.format("HTTP %d (empty body)", httpCode)
+        return nil, string.format("HTTP %d (tyhjä body)", httpCode)
     end
 
     if body == "" then
-        return nil, "Empty response body (HTTP 200)"
+        return nil, "Tyhjä vastausbody (HTTP 200)"
     end
 
     if not json then
-        return nil, "dkjson not available"
+        return nil, "dkjson ei ole saatavilla"
     end
 
     local decoded = json.decode(body)
     if not decoded then
-        return nil, "Failed to decode JSON"
+        return nil, "JSONin purku epäonnistui"
     end
 
     return decoded
@@ -318,8 +318,8 @@ local function name_for_client(clientNum)
 end
 
 local function collect_active_players()
-    -- Returns:
-    --   guids = { "...", ... } (distinct, stable order)
+    -- Palauttaa:
+    --   guids = { "...", ... } (uniikit, vakaa järjestys)
     --   nameByGuid = { [guid] = name }
     --   clientNumByGuid = { [guid] = clientNum }
     local guids = {}
@@ -330,7 +330,7 @@ local function collect_active_players()
     for clientNum = 0, maxClients - 1 do
         if gentity_get(clientNum, "pers.connected") == CON_CONNECTED then
             local team = safe_number(gentity_get(clientNum, "sess.sessionTeam"))
-            -- 1=Axis, 2=Allies; ignore spectators/unknown.
+            -- 1=Axis, 2=Allies; ohita spectatorit/tuntemattomat.
             if team == 1 or team == 2 then
                 local guid = guid_for_client(clientNum)
                 if guid ~= "" and not seen[guid] then
@@ -344,7 +344,7 @@ local function collect_active_players()
                         nameByGuid[guid] = name
                     end
 
-                    -- Keep latest clientNum mapping (should be stable while connected).
+                    -- Pidä uusin clientNum-mappaus (pitäisi pysyä vakaana yhteyden aikana).
                     clientNumByGuid[guid] = clientNum
                 end
             end
@@ -366,10 +366,10 @@ end
 
 local function start_voice_request(players, recipients, requester)
     if not json then
-        return nil, "dkjson missing"
+        return nil, "dkjson puuttuu"
     end
     if package.config:sub(1, 1) == "\\" then
-        return nil, "Background voice requests require a Linux/POSIX game server."
+        return nil, "Taustalla ajettavat voice-pyynnöt vaativat Linux/POSIX-peliserverin."
     end
 
     local base = os.tmpname()
@@ -381,7 +381,7 @@ local function start_voice_request(players, recipients, requester)
     request.files = { request.payload, request.body, request.status, request.done }
     local file = io.open(request.payload, "w")
     if not file then
-        return nil, "Could not create voice request file."
+        return nil, "Voice-pyyntötiedostoa ei voitu luoda."
     end
     file:write(json.encode({ players = players }))
     file:close()
@@ -395,15 +395,15 @@ local function start_voice_request(players, recipients, requester)
     for _, path in ipairs(request.files) do
         table.insert(cleanup, shell_quote(path))
     end
-    -- Mark completion only after curl closes the response. The worker also cleans up
-    -- if a map change unloads this Lua VM before it can consume the reply.
+    -- Merkitse valmiiksi vasta, kun curl sulkee vastauksen. Worker siivoaa myös,
+    -- jos mapin vaihto purkaa tämän Lua VM:n ennen vastauksen käsittelyä.
     local command = "( " .. curl .. "; printf '%s' \"$?\" > " .. shell_quote(request.done)
         .. "; sleep 30; rm -f -- " .. table.concat(cleanup, " ")
         .. " ) </dev/null >/dev/null 2>&1 &"
     local r1, r2, r3 = os.execute(command)
     if not os_execute_ok(r1, r2, r3) then
         cleanup_voice_request(request)
-        return nil, "Could not start voice request."
+        return nil, "Voice-pyyntöä ei voitu käynnistää."
     end
     table.insert(voiceRequests, request)
     return true
@@ -416,11 +416,11 @@ end
 
 local function handle_voice_command(clientNum, moveAll)
     if not is_warmup_only() then
-        say_client(clientNum, "!voice and !voiceall are only allowed in warmup before the match starts.")
+        say_client(clientNum, "!voice ja !allutvittuun ovat sallittuja vain warmupissa ennen matsin alkua.")
         return
     end
     if moveAll and safe_number(gentity_get(clientNum, "sess.referee")) <= 0 then
-        say_client(clientNum, "Only referees can use !voiceall.")
+        say_client(clientNum, "Vain refereet voivat käyttää komentoa !allutvittuun.")
         return
     end
 
@@ -428,7 +428,7 @@ local function handle_voice_command(clientNum, moveAll)
     local callerGuid = guid_for_client(clientNum)
     local lastUsed = moveAll and voiceAllLastUsed or voiceLastUsed[callerGuid]
     if lastUsed and now - lastUsed < VOICE_COOLDOWN_SECONDS then
-        say_client(clientNum, "Please wait a few seconds before requesting another voice move.")
+        say_client(clientNum, "Odota muutama sekunti ennen seuraavaa voice-siirtoa.")
         return
     end
 
@@ -446,13 +446,13 @@ local function handle_voice_command(clientNum, moveAll)
         end
     end
     if #players == 0 then
-        say_client(clientNum, "Join Axis or Allies first; there are no eligible players to move.")
+        say_client(clientNum, "Liity ensin Axis- tai Allies-tiimiin; siirrettäviä pelaajia ei löytynyt.")
         return
     end
     for _, pending in ipairs(voiceRequests) do
         for _, recipient in ipairs(pending.recipients) do
             if selected[recipient.guid] then
-                say_client(clientNum, "A voice move for these players is already in progress.")
+                say_client(clientNum, "Näille pelaajille on jo voice-siirto käynnissä.")
                 return
             end
         end
@@ -467,9 +467,9 @@ local function handle_voice_command(clientNum, moveAll)
     voiceLastUsed[callerGuid] = now
     if moveAll then
         voiceAllLastUsed = now
-        say_all("^3Voice:^7 " .. name_for_client(clientNum) .. "^7 used !voiceall to move everyone to their team's voice channel.")
+        say_all("^3Voice:^7 " .. name_for_client(clientNum) .. "^7 käytti komentoa !allutvittuun siirtääkseen kaikki tiimiensä voice-kanaville.")
     else
-        say_client(clientNum, "Requesting your team's voice channel...")
+        say_client(clientNum, "Pyydetään siirtoa tiimisi voice-kanavalle...")
     end
 end
 
@@ -483,13 +483,13 @@ function et_RunFrame(levelTime)
             local response, failure
             local status = tonumber(read_file_all(request.status))
             if exitCode ~= 0 then
-                failure = "Voice request timed out or failed. Check Discord before retrying."
+                failure = "Voice-pyyntö aikakatkaistiin tai epäonnistui. Tarkista Discord ennen uutta yritystä."
             elseif status ~= 200 then
-                failure = "Voice API request failed (HTTP " .. tostring(status or "unknown") .. ")."
+                failure = "Voice API -pyyntö epäonnistui (HTTP " .. tostring(status or "tuntematon") .. ")."
             else
                 response = json.decode(read_file_all(request.body))
                 if type(response) ~= "table" or type(response.results) ~= "table" then
-                    failure = "Voice API returned an invalid response."
+                    failure = "Voice API palautti virheellisen vastauksen."
                 end
             end
 
@@ -508,16 +508,16 @@ function et_RunFrame(levelTime)
                 if result and result.moved == true then moved = moved + 1 end
                 if recipient_is_connected(recipient) then
                     if safe_number(gentity_get(recipient.clientNum, "sess.sessionTeam")) ~= recipient.teamNumber then
-                        say_client(recipient.clientNum, "Your team changed while the voice request was pending. Check your channel in Discord.")
+                        say_client(recipient.clientNum, "Tiimisi vaihtui voice-pyynnön aikana. Tarkista kanavasi Discordissa.")
                     else
-                        say_client(recipient.clientNum, failure or (result and result.message) or "Voice API did not report your move. Check Discord.")
+                        say_client(recipient.clientNum, failure or (result and result.message) or "Voice API ei raportoinut siirtoasi. Tarkista Discord.")
                     end
                 end
             end
             if request.requester.moveAll and recipient_is_connected(request.requester) then
-                say_client(request.requester.clientNum, string.format("!voiceall: %d/%d moves confirmed. Each player received their result.", moved, #request.recipients))
+                say_client(request.requester.clientNum, string.format("!allutvittuun: %d/%d siirtoa vahvistettu. Jokainen pelaaja sai oman tuloksensa.", moved, #request.recipients))
             end
-            -- In-flight workers own cleanup on timeout; avoid deleting files they still use.
+            -- Käynnissä olevat workerit hoitavat siivouksen timeoutissa; älä poista tiedostoja, joita ne voivat vielä käyttää.
             if exitCode then cleanup_voice_request(request) end
             table.remove(voiceRequests, i)
         end
@@ -526,7 +526,7 @@ end
 
 local function build_payload_json(guids, sigmaMultiplier, mode)
     if not json then
-        return nil, "dkjson not available"
+        return nil, "dkjson ei ole saatavilla"
     end
 
     local payload = {
@@ -543,7 +543,7 @@ local function post_balance_request(payload_json)
     local body_file = os.tmpname() .. ".out"
     local f = io.open(temp_file, "w")
     if not f then
-        return nil, "Failed to create temp file"
+        return nil, "Temp-tiedoston luonti epäonnistui"
     end
     f:write(payload_json)
     f:close()
@@ -557,17 +557,17 @@ local function post_balance_request(payload_json)
 
         persist_debug_file(reqName, payload_json)
         persist_debug_file(metaName, string.format(
-            "timeUtc=%s\nurl=%s\nauth=%s\nrequestFile=%s\n",
+            "aikaUtc=%s\nurl=%s\nauth=%s\npyyntoTiedosto=%s\n",
             now_utc_iso(),
             BALANCE_API_URL,
             (authToken ~= "") and "yes" or "no",
             reqName))
 
-        -- Tell where the files land on disk (best effort).
-        say_all(string.format("^3Balance:^7 logging to %s", get_fs_log_hint(REQUEST_LOG_DIR)))
+        -- Kerro minne tiedostot päätyvät levyllä (best effort).
+        say_all(string.format("^3Balance:^7 lokitus: %s", get_fs_log_hint(REQUEST_LOG_DIR)))
     end
 
-    -- Match pappastats.lua Authorization header formatting.
+    -- Vastaa pappastats.lua:n Authorization-headerin muotoilua.
     local curl_cmd = string.format(
         'curl -sS -o "%s" -w "HTTPSTATUS:%%{http_code}" -X POST -H "Authorization: Bearer %s" -H "Content-Type: application/json" --compressed --connect-timeout 2 --max-time 15 --data-binary @"%s" "%s"',
         tostring(body_file),
@@ -586,7 +586,7 @@ local function post_balance_request(payload_json)
         persist_debug_file(resName, header .. "\n\n" .. tostring(body or ""))
     end
 
-    -- Best-effort cleanup.
+    -- Best-effort-siivous.
     os.remove(temp_file)
     os.remove(body_file)
 
@@ -607,7 +607,7 @@ local function format_mode(mode)
     elseif v == 6 then
         return "5on5/6on6"
     end
-    return "overall"
+    return "kokonaisrating"
 end
 
 local function apply_team_assignments(t1Players, t2Players, clientNumByGuid)
@@ -625,14 +625,14 @@ local function apply_team_assignments(t1Players, t2Players, clientNumByGuid)
         end
     end
 
-    -- By convention: Team1 -> Axis, Team2 -> Allies.
+    -- Käytäntö: Team1 -> Axis, Team2 -> Allies.
     force_team(t1Players, "axis")
     force_team(t2Players, "allies")
 end
 
 local function print_balance_result(response, nameByGuid, clientNumByGuid)
     if type(response) ~= "table" then
-        say_all("^1Balance failed:^7 invalid response")
+        say_all("^1Balance epäonnistui:^7 virheellinen vastaus")
         return
     end
 
@@ -645,7 +645,7 @@ local function print_balance_result(response, nameByGuid, clientNumByGuid)
     local t1Players = (team1.players or team1.Players or {})
     local t2Players = (team2.players or team2.Players or {})
 
-    say_all(string.format("^3Balance:^7 Team1 %s vs Team2 %s ^3[%s]", format_pct(p1), format_pct(p2), format_mode(response.mode)))
+    say_all(string.format("^3Balance:^7 Tiimi 1 %s vs Tiimi 2 %s ^3[%s]", format_pct(p1), format_pct(p2), format_mode(response.mode)))
 
     local function team_line(label, players)
         local names = {}
@@ -659,27 +659,27 @@ local function print_balance_result(response, nameByGuid, clientNumByGuid)
 
         local joined = table.concat(names, ", ")
         if joined == "" then
-            joined = "(none)"
+            joined = "(ei ketään)"
         end
 
         say_all(string.format("^2%s:^7 %s", label, joined))
     end
 
-    team_line("Team1", t1Players)
-    team_line("Team2", t2Players)
+    team_line("Tiimi 1", t1Players)
+    team_line("Tiimi 2", t2Players)
 
     apply_team_assignments(t1Players, t2Players, clientNumByGuid)
-    say_all("^3Balance:^7 teams applied (Team1->Axis, Team2->Allies)")
-    say_all("^3Voice:^7 Type !voice in chat during warmup to move to your team's voice channel.")
+    say_all("^3Balance:^7 tiimit asetettu (Team1->Axis, Team2->Allies)")
+    say_all("^3Voice:^7 Kirjoita !voice chattiin warmupissa siirtyäksesi tiimisi voice-kanavalle.")
 end
 
 local function handle_balance_command(rawMessage)
     if #voiceRequests > 0 then
-        say_all("^3Balance:^7 Please wait for pending voice moves before balancing again.")
+        say_all("^3Balance:^7 Odota keskeneräiset voice-siirrot ennen uutta balansointia.")
         return
     end
     if not is_warmup_only() then
-        say_all("^1!balance^7 is only allowed in warmup")
+        say_all("^1!balance^7 on sallittu vain warmupissa")
         return
     end
 
@@ -691,7 +691,7 @@ local function handle_balance_command(rawMessage)
     local sigmaMultiplier = 3
     local mode = nil
 
-    -- Parse: !balance [3on3|4on4|5on5|6on6] [multiplier]
+    -- Parsitaan: !balance [3on3|4on4|5on5|6on6] [multiplier]
     local parts = {}
     for token in msg:gmatch("%S+") do
         table.insert(parts, token)
@@ -713,24 +713,24 @@ local function handle_balance_command(rawMessage)
 
     local guids, nameByGuid, clientNumByGuid = collect_active_players()
     if #guids < 2 then
-        say_all("^1Balance:^7 need at least 2 players on teams")
+        say_all("^1Balance:^7 tiimeissä pitää olla vähintään 2 pelaajaa")
         return
     end
 
     if not json then
-        say_all("^1Balance failed:^7 dkjson missing")
+        say_all("^1Balance epäonnistui:^7 dkjson puuttuu")
         return
     end
 
     local payload_json, err = build_payload_json(guids, sigmaMultiplier, mode)
     if not payload_json then
-        say_all("^1Balance failed:^7 " .. tostring(err))
+        say_all("^1Balance epäonnistui:^7 " .. tostring(err))
         return
     end
 
     local response, postErr = post_balance_request(payload_json)
     if not response then
-        say_all("^1Balance failed:^7 " .. tostring(postErr))
+        say_all("^1Balance epäonnistui:^7 " .. tostring(postErr))
         return
     end
 
@@ -744,7 +744,7 @@ function et_InitGame(levelTime, randomSeed, restart)
     if cvar and cvar > 0 then
         maxClients = cvar
     end
-    log("loaded")
+    log("ladattu")
 end
 
 function et_ClientCommand(clientNum, command)
@@ -757,16 +757,16 @@ function et_ClientCommand(clientNum, command)
     msg = trim(msg)
 
     local voiceCommand = msg:lower()
-    if voiceCommand == "!voice" or voiceCommand == "!voiceall" then
-        handle_voice_command(clientNum, voiceCommand == "!voiceall")
-        -- Preserve the normal chat message, including the sender's own chat echo.
+    if voiceCommand == "!voice" or voiceCommand == "!allutvittuun" then
+        handle_voice_command(clientNum, voiceCommand == "!allutvittuun")
+        -- Säilytä normaali chat-viesti, mukaan lukien lähettäjän oma chat-echo.
         return 0
     end
 
     if starts_with(msg, "!balance") then
         handle_balance_command(msg)
-        -- Swallow command so it doesn't appear in chat.
-        return 1
+        -- Piilota komento, jotta se ei näy chatissa.
+        return 0
     end
 
     return 0

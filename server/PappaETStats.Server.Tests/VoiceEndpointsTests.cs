@@ -22,6 +22,25 @@ public sealed class VoiceEndpointsTests
     private const string AxisGuid = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     private const string AlliesGuid = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
     private const string UnknownGuid = "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
+    private const string FormerGuid = "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD";
+
+    [Fact]
+    public async Task MergeGuidMovesHistoryAndRecalculatesRatings()
+    {
+        await using var host = await TestHost.Start();
+
+        var response = await host.Client.PostAsJsonAsync("/api/admin/players/merge-guid", new
+        {
+            sourceGuid = FormerGuid.ToLowerInvariant(),
+            targetGuid = AxisGuid.ToLowerInvariant(),
+        });
+
+        response.EnsureSuccessStatusCode();
+        await using var db = new StatsDbContext(new DbContextOptionsBuilder<StatsDbContext>().UseSqlite(host.Connection).Options);
+        Assert.Null(await db.Players.SingleOrDefaultAsync(p => p.Guid == FormerGuid));
+        Assert.NotNull(await db.Players.SingleOrDefaultAsync(p => p.Guid == AxisGuid));
+        Assert.Equal(AxisGuid, await db.MatchPlayers.Select(p => p.Guid).SingleAsync());
+    }
 
     [Fact]
     public async Task MigrationRemovesObsoletePreferenceAndPreservesDiscordLink()
@@ -149,6 +168,7 @@ public sealed class VoiceEndpointsTests
     {
         public HttpClient Client => client;
         public BotHandler Bot => bot;
+        public SqliteConnection Connection => connection;
 
         public static async Task<TestHost> Start(string token = "secret")
         {
@@ -158,6 +178,7 @@ public sealed class VoiceEndpointsTests
             builder.Logging.ClearProviders();
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(new IngestOptions { Token = token }));
+            builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(new AdminOptions { Token = token }));
             builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(new WebhookOptions
             {
                 Url = "http://bot.invalid/webhook/game-completed", Token = "bot-secret",
@@ -169,11 +190,30 @@ public sealed class VoiceEndpointsTests
             var app = builder.Build();
             app.MapVoiceEndpoints();
             app.MapTeamBalanceEndpoints();
+            app.MapAdminEndpoints();
             await using (var db = await app.Services.GetRequiredService<IDbContextFactory<StatsDbContext>>().CreateDbContextAsync())
             {
                 await db.Database.EnsureCreatedAsync();
                 db.Players.AddRange(new Player { Guid = AxisGuid, DiscordId = "111", Mu = 25, Sigma = 8 },
-                    new Player { Guid = AlliesGuid, DiscordId = "222", Mu = 25, Sigma = 8 });
+                    new Player { Guid = AlliesGuid, DiscordId = "222", Mu = 25, Sigma = 8 },
+                    new Player { Guid = FormerGuid, Mu = 25, Sigma = 8 });
+                var match = new Match
+                {
+                    Id = Guid.NewGuid(), ExternalMatchId = "merge-test", MapName = "test", Config = "test",
+                    ServerName = "test", ServerIp = "127.0.0.1", ServerPort = "27960",
+                };
+                var round = new MatchRound
+                {
+                    Id = Guid.NewGuid(), Match = match, RoundNumber = 1, TimeLimit = "", NextTimeLimit = "",
+                };
+                var side = new MatchSide { Id = Guid.NewGuid(), MatchRound = round, Team = 1 };
+                side.Players.Add(new MatchPlayer
+                {
+                    Id = Guid.NewGuid(), MatchSide = side, Guid = FormerGuid, Name = "former", Team = 1,
+                });
+                round.Sides.Add(side);
+                match.Rounds.Add(round);
+                db.Matches.Add(match);
                 await db.SaveChangesAsync();
             }
             await app.StartAsync();

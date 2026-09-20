@@ -30,10 +30,19 @@ public static class AdminEndpoints
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status401Unauthorized);
 
+        group.MapPost("/players/merge-guid", MergePlayerGuidAsync)
+            .WithName("MergePlayerGuid")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
+
         return endpoints;
     }
 
     private sealed record RecalculateMatchWinnersRequest(Guid? MatchId);
+    private sealed record MergePlayerGuidRequest(string? SourceGuid, string? TargetGuid);
 
     private static IResult? ValidateBearerToken(HttpRequest request, IOptions<AdminOptions> adminOptions)
     {
@@ -347,5 +356,114 @@ public static class AdminEndpoints
         });
 
         return Results.Ok(result);
+    }
+
+    private static async Task<IResult> MergePlayerGuidAsync(
+        HttpRequest request,
+        IDbContextFactory<StatsDbContext> dbFactory,
+        IOptions<AdminOptions> adminOptions,
+        MergePlayerGuidRequest? body,
+        CancellationToken cancellationToken)
+    {
+        var authResult = ValidateBearerToken(request, adminOptions);
+        if (authResult is not null)
+        {
+            return authResult;
+        }
+
+        var sourceGuid = body?.SourceGuid?.Trim().ToUpperInvariant();
+        var targetGuid = body?.TargetGuid?.Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(sourceGuid) || string.IsNullOrWhiteSpace(targetGuid))
+        {
+            return Results.BadRequest(new { error = "sourceGuid and targetGuid are required" });
+        }
+
+        if (sourceGuid == targetGuid)
+        {
+            return Results.BadRequest(new { error = "sourceGuid and targetGuid must differ" });
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+
+        var source = await db.Players.SingleOrDefaultAsync(p => p.Guid == sourceGuid, cancellationToken);
+        if (source is null)
+        {
+            var targetExists = await db.Players.AnyAsync(p => p.Guid == targetGuid, cancellationToken);
+            return targetExists
+                ? Results.Ok(new { merged = false, sourceGuid, targetGuid, reason = "source already merged or not found" })
+                : Results.NotFound(new { error = "source or target player not found", sourceGuid, targetGuid });
+        }
+
+        var target = await db.Players.SingleOrDefaultAsync(p => p.Guid == targetGuid, cancellationToken);
+        if (target is null)
+        {
+            target = new Player
+            {
+                Guid = targetGuid,
+                Mu = source.Mu,
+                Sigma = source.Sigma,
+                MuSmall = source.MuSmall,
+                SigmaSmall = source.SigmaSmall,
+                MuLarge = source.MuLarge,
+                SigmaLarge = source.SigmaLarge,
+                DiscordId = source.DiscordId,
+            };
+            db.Players.Add(target);
+        }
+        else if (!string.IsNullOrWhiteSpace(source.DiscordId) &&
+                 !string.IsNullOrWhiteSpace(target.DiscordId) &&
+                 !string.Equals(source.DiscordId, target.DiscordId, StringComparison.Ordinal))
+        {
+            return Results.Conflict(new { error = "source and target have different Discord links", sourceGuid, targetGuid });
+        }
+        else if (string.IsNullOrWhiteSpace(target.DiscordId))
+        {
+            target.DiscordId = source.DiscordId;
+        }
+
+        var duplicateMatchIds = await db.MatchPlayers
+            .Where(p => p.Guid == sourceGuid)
+            .Join(db.MatchPlayers.Where(p => p.Guid == targetGuid),
+                sourcePlayer => sourcePlayer.MatchSideId,
+                targetPlayer => targetPlayer.MatchSideId,
+                (sourcePlayer, targetPlayer) => sourcePlayer.MatchSideId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        if (duplicateMatchIds.Count > 0)
+        {
+            return Results.Conflict(new
+            {
+                error = "source and target both occur in the same match side; merge was not performed",
+                sourceGuid,
+                targetGuid,
+                conflictingMatchSides = duplicateMatchIds.Count,
+            });
+        }
+
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
+
+            await db.MatchPlayers
+                .Where(p => p.Guid == sourceGuid)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(p => p.Guid, targetGuid), cancellationToken);
+            await db.MatchObituaries
+                .Where(o => o.TargetGuid == sourceGuid || o.AttackerGuid == sourceGuid)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(o => o.TargetGuid, o => o.TargetGuid == sourceGuid ? targetGuid : o.TargetGuid)
+                    .SetProperty(o => o.AttackerGuid, o => o.AttackerGuid == sourceGuid ? targetGuid : o.AttackerGuid), cancellationToken);
+            await db.PlayerRegistrationTokens
+                .Where(t => t.UsedByEtGuid == sourceGuid)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(t => t.UsedByEtGuid, targetGuid), cancellationToken);
+
+            db.Players.Remove(source);
+            await db.SaveChangesAsync(cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+        });
+
+        // Replaying from the merged history is the only correct way to combine
+        // ratings from two GUIDs, especially for format-specific tracks.
+        return await RecalculateAllSkillRatingsAsync(request, dbFactory, adminOptions, cancellationToken);
     }
 }
