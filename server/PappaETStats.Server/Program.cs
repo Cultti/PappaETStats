@@ -202,10 +202,7 @@ if (discordLoginEnabled)
     app.MapAuthEndpoints();
 }
 
-if (app.Environment.IsDevelopment())
-{
-    app.MapStaticAssets();
-}
+app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

@@ -104,6 +104,39 @@ jobs:
           echo "App did not become healthy in time."
           exit 1
 
+      - name: Check published JavaScript assets
+        run: |
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from urllib.parse import urljoin, urlparse
+          from urllib.request import urlopen
+
+          base = "http://localhost:8080/"
+
+          class Scripts(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.sources = []
+
+              def handle_starttag(self, tag, attrs):
+                  src = dict(attrs).get("src")
+                  if tag == "script" and src:
+                      self.sources.append(urljoin(base, src))
+
+          parser = Scripts()
+          with urlopen(base, timeout=10) as response:
+              parser.feed(response.read().decode())
+          assert any("/_framework/blazor.web" in src for src in parser.sources), "Blazor script missing"
+          for src in parser.sources:
+              if urlparse(src).netloc != urlparse(base).netloc:
+                  continue
+              with urlopen(src, timeout=10) as response:
+                  assert response.status == 200, src
+                  assert "javascript" in response.headers.get("Content-Type", ""), src
+                  assert response.read(), src
+              print(f"PASS {src}")
+          PY
+
       - name: Container logs
         if: always()
         run: docker logs pappaetstats-smoke || true
