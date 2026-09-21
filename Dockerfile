@@ -15,6 +15,9 @@ RUN dotnet publish server/PappaETStats.Server/PappaETStats.Server.csproj \
     --no-restore \
     /p:UseAppHost=false
 
+# Fail the image build if the Blazor boot script was omitted from publish output.
+RUN test -s /app/publish/wwwroot/_framework/blazor.web.js
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS final
 WORKDIR /app
 
