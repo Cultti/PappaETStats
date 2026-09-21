@@ -626,6 +626,9 @@ local function apply_team_assignments(t1Players, t2Players, clientNumByGuid)
     end
 
     -- Käytäntö: Team1 -> Axis, Team2 -> Allies.
+    -- Move all balanced players to spectator before anyone joins their new team.
+    force_team(t1Players, "spectator")
+    force_team(t2Players, "spectator")
     force_team(t1Players, "axis")
     force_team(t2Players, "allies")
 end

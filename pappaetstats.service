@@ -1,0 +1,24 @@
+[Unit]
+Description=PappaETStats stack (nerdctl compose)
+Requires=network-online.target
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=root
+Group=root
+WorkingDirectory=/home/etlserver/etlstats
+Environment=HOME=/root
+Environment=XDG_CONFIG_HOME=/root/.config
+Environment=XDG_DATA_HOME=/root/.local/share
+ExecStartPre=/usr/local/bin/nerdctl compose --env-file /home/etlserver/etlstats/.env pull
+ExecStart=/usr/local/bin/nerdctl compose --env-file /home/etlserver/etlstats/.env up -d
+ExecReload=/bin/sh -c '/usr/local/bin/nerdctl compose --env-file /home/etlserver/etlstats/.env pull && /usr/local/bin/nerdctl compose --env-file /home/etlserver/etlstats/.env up -d'
+ExecStop=/usr/local/bin/nerdctl compose --env-file /home/etlserver/etlstats/.env stop
+TimeoutStartSec=0
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

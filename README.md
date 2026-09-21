@@ -55,25 +55,97 @@ The Lua side typically needs:
 
 This repo intentionally keeps these as *config values* (cvars or a simple config file) so you can run multiple servers.
 
-### MariaDB
+### Docker Compose deployment
 
-For local development, there’s an optional compose file:
+The Compose file starts both the .NET app and MariaDB. It is compatible with
+Docker Compose and nerdctl compose.
 
 - [docker-compose.yml](docker-compose.yml)
 - [.env.example](.env.example)
 
-## Quickstart (local dev)
+The app listens on port `5080` on the host and MariaDB is available to the host
+on port `3307` by default. The app connects to MariaDB using the Compose service
+name `mariadb`; do not use `localhost` in the app connection string. The
+PappaGather bot is available to the app at `http://pappagather:8080` on the
+internal Compose network.
 
-1) Start MariaDB (optional):
+ The single `.env` file contains the settings for all three services. Keep the
+ service prefix when editing variables: `MARIADB__*` for MariaDB,
+ `PAPPAETSTATS__*` for the .NET app, and `PAPPAGATHER__*` for the Discord bot.
+
+## Quickstart
+
+1) Prepare the environment:
 
 - Copy `.env.example` → `.env` and edit values
-- Run: `docker compose up -d`
+- Keep `.env` private; it contains production credentials and is ignored by git.
+- Stop and disable the old standalone bot unit before starting Compose:
+	`sudo systemctl disable --now pappagather.service`
 
-2) Start the .NET server:
+2) Pull and start the stack:
 
-- Follow [server/README.md](server/README.md)
+- nerdctl: `nerdctl pull ghcr.io/cultti/pappaetstats:latest && nerdctl compose up -d`
+- Docker: `docker pull ghcr.io/cultti/pappaetstats:latest && docker compose up -d`
 
-3) Configure ET: Legacy Lua scripts:
+3) Check the app at `http://localhost:5080`.
+
+The app applies pending EF Core migrations automatically when it starts.
+
+### Run with systemd
+
+Copy [pappaetstats.service](pappaetstats.service) to `/etc/systemd/system/`
+on the server, then enable the stack:
+
+```bash
+sudo install -m 0644 pappaetstats.service /etc/systemd/system/pappaetstats.service
+sudo systemctl disable --now pappagather.service 2>/dev/null || true
+sudo nerdctl rm -f pappagather 2>/dev/null || true
+sudo systemctl daemon-reload
+sudo systemctl enable --now pappaetstats.service
+sudo systemctl status pappaetstats.service
+```
+
+The unit runs Compose as `root`, so it uses root's system-wide nerdctl/containerd
+instance. The service still reads the deployment files from
+`/home/etlserver/etlstats`.
+
+To update all images and recreate only containers whose image or configuration
+changed, run:
+
+```bash
+sudo systemctl reload pappaetstats.service
+```
+
+The unit runs `nerdctl compose pull` before `nerdctl compose up -d`. A plain
+`nerdctl restart` only restarts existing containers and does not download new
+images. Use `systemctl restart` only when you intentionally want a full stop
+and start.
+
+View application logs with `nerdctl compose logs -f` from the deployment
+directory, or inspect unit failures with `journalctl -u pappaetstats.service`.
+
+## Import the existing MariaDB database
+
+Create a dump from the old MariaDB instance before stopping it, then import it
+into the new container. The target database and user are created from `.env` on
+the first MariaDB start.
+
+```bash
+mysqldump --single-transaction --routines --triggers \
+	-h 127.0.0.1 -u OLD_USER -p OLD_DATABASE > old-database.sql
+set -a; . ./.env; set +a
+nerdctl compose up -d mariadb
+nerdctl exec -i pappaetstats-mariadb mariadb \
+	-u"$MARIADB__USER" -p"$MARIADB__PASSWORD" "$MARIADB__DATABASE" < old-database.sql
+nerdctl pull ghcr.io/cultti/pappaetstats:latest
+nerdctl compose up -d
+```
+
+For a remote migration host, use the new container's mapped port (`3307` by
+default) instead of the internal port `3306`. Do not delete the
+`mariadb_data` volume after importing: it contains the migrated database.
+
+4) Configure ET: Legacy Lua scripts:
 
 - Follow [et-server/README.md](et-server/README.md)
 

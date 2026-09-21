@@ -4,14 +4,59 @@ services:
     container_name: pappaetstats-mariadb
     restart: unless-stopped
     environment:
-      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
-      MARIADB_DATABASE: ${MARIADB_DATABASE}
-      MARIADB_USER: ${MARIADB_USER}
-      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${MARIADB__ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MARIADB__DATABASE}
+      MARIADB_USER: ${MARIADB__USER}
+      MARIADB_PASSWORD: ${MARIADB__PASSWORD}
     ports:
-      - "3306:3306"
+      - "${MARIADB__HOST_PORT:-3307}:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     volumes:
       - mariadb_data:/var/lib/mysql
 
+  app:
+    image: ghcr.io/cultti/pappaetstats:latest
+    container_name: pappaetstats-app
+    restart: unless-stopped
+    depends_on:
+      - mariadb
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      DOTNET_PRINT_TELEMETRY_MESSAGE: "false"
+      Pappa__Db__Provider: mariadb
+      Pappa__Db__ConnectionString: "Server=mariadb;Port=3306;Database=${MARIADB__DATABASE};User=${MARIADB__USER};Password=${MARIADB__PASSWORD};"
+      Pappa__Ingest__Token: ${PAPPAETSTATS__INGEST__TOKEN}
+      Pappa__DemoStorage__RootPath: /app/App_Data/demos
+      Pappa__Webhook__Url: ${PAPPAETSTATS__WEBHOOK__URL}
+      Pappa__Webhook__Token: ${PAPPAETSTATS__WEBHOOK__TOKEN}
+      Pappa__Webhook__FrontendBaseUrl: ${PAPPAETSTATS__WEBHOOK__FRONTEND_BASE_URL}
+      Pappa__Discord__ClientId: ${PAPPAETSTATS__DISCORD__CLIENT_ID}
+      Pappa__Discord__ClientSecret: ${PAPPAETSTATS__DISCORD__CLIENT_SECRET}
+    ports:
+      - "5080:8080"
+    volumes:
+      - app_data:/app/App_Data
+
+  pappagather:
+    image: ghcr.io/cultti/pappagather:latest
+    container_name: pappagather
+    restart: unless-stopped
+    environment:
+      DISCORD_TOKEN: ${PAPPAGATHER__DISCORD_TOKEN}
+      GATHER_TEAM_SIZE: ${PAPPAGATHER__GATHER_TEAM_SIZE}
+      WEBHOOK_CHANNEL_ID: ${PAPPAGATHER__WEBHOOK_CHANNEL_ID}
+      GATHER_CHANNEL_ID: ${PAPPAGATHER__GATHER_CHANNEL_ID}
+      ADMIN_ROLE_ID: ${PAPPAGATHER__ADMIN_ROLE_ID}
+      WEBHOOK_MOVE_AXIS_CHANNEL_ID: ${PAPPAGATHER__WEBHOOK_MOVE_AXIS_CHANNEL_ID}
+      WEBHOOK_MOVE_ALLIES_CHANNEL_ID: ${PAPPAGATHER__WEBHOOK_MOVE_ALLIES_CHANNEL_ID}
+      WEBHOOK_MOVE_PATH: ${PAPPAGATHER__WEBHOOK_MOVE_PATH}
+      GATHER_POLL_ROLE_ID: ${PAPPAGATHER__GATHER_POLL_ROLE_ID}
+
 volumes:
   mariadb_data:
+  app_data:
