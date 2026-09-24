@@ -28,6 +28,7 @@ local voiceRequests = {}
 local voiceLastUsed = {}
 local voiceAllLastUsed = nil
 local nextVoicePoll = 0
+local pendingTeamAssignments = nil
 
 -- Backendin käyttämä token (sama token kuin ingest-endpointeilla).
 -- Jätä tyhjäksi, jos Authorization-headeria ei lähetetä.
@@ -419,6 +420,10 @@ local function handle_voice_command(clientNum, moveAll)
         say_client(clientNum, "!voice ja !allutvittuun ovat sallittuja vain warmupissa ennen matsin alkua.")
         return
     end
+    if pendingTeamAssignments then
+        say_client(clientNum, "Odota, että balansointi on siirtänyt pelaajat uusiin tiimeihin.")
+        return
+    end
     if moveAll and safe_number(gentity_get(clientNum, "sess.referee")) <= 0 then
         say_client(clientNum, "Vain refereet voivat käyttää komentoa !allutvittuun.")
         return
@@ -474,6 +479,26 @@ local function handle_voice_command(clientNum, moveAll)
 end
 
 function et_RunFrame(levelTime)
+    -- Forceteam spectator must be allowed to complete on the game side before
+    -- assigning the destination team. Otherwise the old fireteam can survive
+    -- the team swap. This queue is populated from the previous game callback,
+    -- so processing it here guarantees at least one frame boundary.
+    if pendingTeamAssignments then
+        local assignments = pendingTeamAssignments
+        pendingTeamAssignments = nil
+
+        for _, assignment in ipairs(assignments) do
+            if gentity_get(assignment.clientNum, "pers.connected") == CON_CONNECTED
+                and guid_for_client(assignment.clientNum) == assignment.guid then
+                et.trap_SendConsoleCommand(et.EXEC_NOW, string.format(
+                    "forceteam %d %s\n", assignment.clientNum, assignment.teamName))
+            end
+        end
+
+        say_all("^3Balance:^7 tiimit asetettu (Team1->Axis, Team2->Allies)")
+        say_all("^3Voice:^7 Kirjoita !voice chattiin warmupissa siirtyäksesi tiimisi voice-kanavalle.")
+    end
+
     if levelTime < nextVoicePoll then return end
     nextVoicePoll = levelTime + 200
     for i = #voiceRequests, 1, -1 do
@@ -615,22 +640,29 @@ local function apply_team_assignments(t1Players, t2Players, clientNumByGuid)
         return
     end
 
-    local function force_team(players, teamName)
+    local assignments = {}
+
+    local function move_to_spectator_then_queue(players, teamName)
         for _, p in ipairs(players) do
             local guid = tostring(p.guid or p.Guid or "")
             local clientNum = clientNumByGuid[guid]
             if type(clientNum) == "number" then
-                et.trap_SendConsoleCommand(et.EXEC_NOW, string.format("forceteam %d %s\n", clientNum, teamName))
+                et.trap_SendConsoleCommand(et.EXEC_NOW, string.format("forceteam %d spectator\n", clientNum))
+                table.insert(assignments, {
+                    clientNum = clientNum,
+                    guid = guid,
+                    teamName = teamName
+                })
             end
         end
     end
 
     -- Käytäntö: Team1 -> Axis, Team2 -> Allies.
-    -- Move all balanced players to spectator before anyone joins their new team.
-    force_team(t1Players, "spectator")
-    force_team(t2Players, "spectator")
-    force_team(t1Players, "axis")
-    force_team(t2Players, "allies")
+    -- Destination teams are assigned from et_RunFrame after the spectator
+    -- transition has had a full frame to clear old fireteam membership.
+    move_to_spectator_then_queue(t1Players, "axis")
+    move_to_spectator_then_queue(t2Players, "allies")
+    pendingTeamAssignments = assignments
 end
 
 local function print_balance_result(response, nameByGuid, clientNumByGuid)
@@ -672,11 +704,14 @@ local function print_balance_result(response, nameByGuid, clientNumByGuid)
     team_line("Tiimi 2", t2Players)
 
     apply_team_assignments(t1Players, t2Players, clientNumByGuid)
-    say_all("^3Balance:^7 tiimit asetettu (Team1->Axis, Team2->Allies)")
-    say_all("^3Voice:^7 Kirjoita !voice chattiin warmupissa siirtyäksesi tiimisi voice-kanavalle.")
+    say_all("^3Balance:^7 siirretään pelaajat uusiin tiimeihin...")
 end
 
 local function handle_balance_command(rawMessage)
+    if pendingTeamAssignments then
+        say_all("^3Balance:^7 Edellinen tiimien siirto on vielä kesken.")
+        return
+    end
     if #voiceRequests > 0 then
         say_all("^3Balance:^7 Odota keskeneräiset voice-siirrot ennen uutta balansointia.")
         return
