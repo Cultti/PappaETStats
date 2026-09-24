@@ -181,6 +181,11 @@ else
                         SelfKills = p.SelfKills,
                         TeamKills = p.TeamKills,
                         TeamGibs = p.TeamGibs,
+                        MultiKills2 = p.MultiKills2,
+                        MultiKills3 = p.MultiKills3,
+                        MultiKills4 = p.MultiKills4,
+                        MultiKills5 = p.MultiKills5,
+                        MultiKills6 = p.MultiKills6,
                         WeaponStats = p.WeaponStats.Select(ws => new MatchPlayerWeaponStat
                         {
                             Id = ws.Id,
@@ -687,6 +692,11 @@ else
             Gibs = p.Gibs,
             SelfKills = p.SelfKills,
             TeamKills = p.TeamKills,
+            MultiKills2 = p.MultiKills2,
+            MultiKills3 = p.MultiKills3,
+            MultiKills4 = p.MultiKills4,
+            MultiKills5 = p.MultiKills5,
+            MultiKills6 = p.MultiKills6,
             WeaponStats = weaponStatsForPlayer(p)
                 .Select(ws => new PlayerWeaponStatRow(ws.Weapon, ws.Hits, ws.Atts, ws.Kills, ws.Deaths, ws.Headshots))
                 .ToList(),

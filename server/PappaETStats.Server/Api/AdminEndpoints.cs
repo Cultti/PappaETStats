@@ -30,6 +30,11 @@ public static class AdminEndpoints
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status401Unauthorized);
 
+        group.MapPost("/multikills/recalculate", RecalculateAllMultiKillsAsync)
+            .WithName("RecalculateAllMultiKills")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
+
         group.MapPost("/players/merge-guid", MergePlayerGuidAsync)
             .WithName("MergePlayerGuid")
             .Produces(StatusCodes.Status200OK)
@@ -356,6 +361,78 @@ public static class AdminEndpoints
         });
 
         return Results.Ok(result);
+    }
+
+    private static async Task<IResult> RecalculateAllMultiKillsAsync(
+        HttpRequest request,
+        IDbContextFactory<StatsDbContext> dbFactory,
+        IOptions<AdminOptions> adminOptions,
+        CancellationToken cancellationToken)
+    {
+        var authResult = ValidateBearerToken(request, adminOptions);
+        if (authResult is not null)
+        {
+            return authResult;
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+
+        var players = await db.MatchPlayers
+            .Select(p => new { p.Id, p.Guid })
+            .ToListAsync(cancellationToken);
+        var playerIdsByGuid = players
+            .Where(p => !string.IsNullOrWhiteSpace(p.Guid))
+            .GroupBy(p => p.Guid, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Select(p => p.Id).ToArray(), StringComparer.OrdinalIgnoreCase);
+
+        var obituaryRows = await db.MatchObituaries
+            .Where(o => o.AttackerGuid != null)
+            .Select(o => new { o.MatchRoundId, o.TimestampMs, o.AttackerGuid, o.MeansOfDeath })
+            .ToListAsync(cancellationToken);
+
+        var playerCounts = new Dictionary<Guid, int[]>();
+        var qualifyingGroups = 0;
+        foreach (var roundGroup in obituaryRows.GroupBy(o => o.MatchRoundId))
+        {
+            var roundKills = roundGroup
+                .Where(o => o.TimestampMs >= 0 && !string.IsNullOrWhiteSpace(o.AttackerGuid))
+                .GroupBy(o => (Attacker: o.AttackerGuid!, o.TimestampMs, o.MeansOfDeath));
+
+            foreach (var killGroup in roundKills)
+            {
+                var count = killGroup.Count();
+                if (count is < 2 or > 6 || !playerIdsByGuid.TryGetValue(killGroup.Key.Attacker, out var matchingPlayerIds))
+                {
+                    continue;
+                }
+
+                qualifyingGroups++;
+                foreach (var playerId in matchingPlayerIds)
+                {
+                    if (!playerCounts.TryGetValue(playerId, out var counts))
+                    {
+                        counts = new int[5];
+                        playerCounts[playerId] = counts;
+                    }
+
+                    counts[count - 2]++;
+                }
+            }
+        }
+
+        // Update only these counters so recalculation preserves every other match-row value.
+        foreach (var player in await db.MatchPlayers.ToListAsync(cancellationToken))
+        {
+            playerCounts.TryGetValue(player.Id, out var counts);
+            player.MultiKills2 = counts?[0] ?? 0;
+            player.MultiKills3 = counts?[1] ?? 0;
+            player.MultiKills4 = counts?[2] ?? 0;
+            player.MultiKills5 = counts?[3] ?? 0;
+            player.MultiKills6 = counts?[4] ?? 0;
+        }
+
+        var updatedPlayers = await db.SaveChangesAsync(cancellationToken);
+        return Results.Ok(new { processedPlayers = players.Count, updatedPlayers, qualifyingGroups });
     }
 
     private static async Task<IResult> MergePlayerGuidAsync(

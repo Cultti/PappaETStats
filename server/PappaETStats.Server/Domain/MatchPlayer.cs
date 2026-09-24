@@ -33,6 +33,12 @@ public sealed class MatchPlayer
     public int TeamKills { get; set; }
     public int TeamGibs { get; set; }
 
+    public int MultiKills2 { get; set; }
+    public int MultiKills3 { get; set; }
+    public int MultiKills4 { get; set; }
+    public int MultiKills5 { get; set; }
+    public int MultiKills6 { get; set; }
+
     public List<MatchPlayerWeaponStat> WeaponStats { get; set; } = new();
 
     public List<MatchPlayerClassStat> ClassStats { get; set; } = new();

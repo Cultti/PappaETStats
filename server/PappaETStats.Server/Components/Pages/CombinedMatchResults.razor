@@ -258,6 +258,11 @@ else
                     p.TeamDamageGiven,
                     p.TeamDamageReceived,
                     p.TeamKills,
+                    p.MultiKills2,
+                    p.MultiKills3,
+                    p.MultiKills4,
+                    p.MultiKills5,
+                    p.MultiKills6,
                     p.Gibs,
                     p.SelfKills,
                 }
@@ -364,6 +369,11 @@ else
                         Gibs = gibs,
                         SelfKills = selfKills,
                         TeamKills = teamKills,
+                        MultiKills2 = g.Sum(x => x.MultiKills2),
+                        MultiKills3 = g.Sum(x => x.MultiKills3),
+                        MultiKills4 = g.Sum(x => x.MultiKills4),
+                        MultiKills5 = g.Sum(x => x.MultiKills5),
+                        MultiKills6 = g.Sum(x => x.MultiKills6),
                         WeaponStats = weaponSummary.Rows,
                         ClassStats = classStats,
                     };

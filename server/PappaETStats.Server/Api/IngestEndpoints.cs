@@ -283,6 +283,16 @@ public static class IngestEndpoints
         }
 
         var players = dto.Players ?? [];
+        var multiKillsByAttacker = (dto.Obituaries ?? [])
+            .Where(o => !string.IsNullOrWhiteSpace(o.Attacker) && o.Timestamp >= 0)
+            .GroupBy(o => (Attacker: o.Attacker!.Trim(), o.Timestamp, o.MeansOfDeath))
+            .Select(g => (g.Key.Attacker, Count: g.Count()))
+            .Where(x => x.Count is >= 2 and <= 6)
+            .GroupBy(x => x.Attacker, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => new[] { 0, 0, 0, 0, 0 }.Select((_, i) => g.Count(x => x.Count == i + 2)).ToArray(),
+                StringComparer.OrdinalIgnoreCase);
         var groupedByTeam = players
             .GroupBy(p => p.Team)
             .OrderBy(g => g.Key)
@@ -496,6 +506,15 @@ public static class IngestEndpoints
                     TeamKills = p1 is null ? p.TeamKills : Delta(teamKillsIsCumulative, p.TeamKills, p1.TeamKills),
                     TeamGibs = p1 is null ? p.TeamGibs : Delta(teamGibsIsCumulative, p.TeamGibs, p1.TeamGibs),
                 };
+
+                if (!string.IsNullOrWhiteSpace(player.Guid) && multiKillsByAttacker.TryGetValue(player.Guid, out var multiKills))
+                {
+                    player.MultiKills2 = multiKills[0];
+                    player.MultiKills3 = multiKills[1];
+                    player.MultiKills4 = multiKills[2];
+                    player.MultiKills5 = multiKills[3];
+                    player.MultiKills6 = multiKills[4];
+                }
 
                 foreach (var w in p.WeaponStats ?? [])
                 {

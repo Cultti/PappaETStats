@@ -18,6 +18,7 @@
         }
         <col style="width: var(--pappa-col-kdr);" />
         <col style="width: var(--pappa-col-2);" />
+        <col style="width: var(--pappa-col-5);" />
         <col style="width: var(--pappa-col-2);" />
         <col style="width: var(--pappa-col-5);" />
         <col style="width: var(--pappa-col-5);" />
@@ -89,6 +90,15 @@
             <CellTemplate>@context.Item.WeaponStats.Sum(s => s.Deaths)</CellTemplate>
             <FooterTemplate>
                 <div><strong>@TotalDeaths</strong></div>
+            </FooterTemplate>
+        </TemplateColumn>
+
+        <TemplateColumn T="PlayerStatsGridRow" Title="Multi-kills" HeaderClass="pappa-col-num pappa-col-5" CellClass="pappa-col-num pappa-col-5">
+            <CellTemplate>
+                @($"2K {context.Item.MultiKills2} · 3K {context.Item.MultiKills3} · 4K {context.Item.MultiKills4} · 5K {context.Item.MultiKills5} · 6K {context.Item.MultiKills6}")
+            </CellTemplate>
+            <FooterTemplate>
+                <div><strong>@($"2K {Players.Sum(p => p.MultiKills2)} · 3K {Players.Sum(p => p.MultiKills3)} · 4K {Players.Sum(p => p.MultiKills4)} · 5K {Players.Sum(p => p.MultiKills5)} · 6K {Players.Sum(p => p.MultiKills6)}")</strong></div>
             </FooterTemplate>
         </TemplateColumn>
 

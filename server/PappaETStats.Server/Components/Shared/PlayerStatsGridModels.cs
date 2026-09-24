@@ -27,6 +27,11 @@ public sealed class PlayerStatsGridRow
     public int Gibs { get; init; }
     public int SelfKills { get; init; }
     public int TeamKills { get; init; }
+    public int MultiKills2 { get; init; }
+    public int MultiKills3 { get; init; }
+    public int MultiKills4 { get; init; }
+    public int MultiKills5 { get; init; }
+    public int MultiKills6 { get; init; }
 
     public IReadOnlyList<PlayerWeaponStatRow> WeaponStats { get; init; } = [];
     public IReadOnlyList<PlayerClassStatRow> ClassStats { get; init; } = [];
