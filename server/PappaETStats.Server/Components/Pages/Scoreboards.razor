@@ -7,7 +7,7 @@
 <PageTitle>Scoreboards</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-1">Scoreboards</MudText>
-<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">Top five players across all recorded matches for each stat.</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">Top five players with at least 20 matches and activity in the past month.</MudText>
 
 @if (_loadError is not null)
 {
@@ -31,7 +31,7 @@ else
                     <MudText Typo="Typo.h6" Class="mb-3">@board.Title</MudText>
                     @if (board.Rows.Count == 0)
                     {
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">No stats recorded.</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">-</MudText>
                     }
                     else
                     {
@@ -59,8 +59,8 @@ else
 
 @code {
     private sealed record PlayerTotals(
-        string Guid, string Name, int Games, int Xp, long DamageGiven, long DamageReceived,
-        long Gibs, long SelfKills, long TeamKills, long TeamGibs, long Kills, long Deaths,
+        string Guid, string Name, int Games, DateTime LastPlayedUtc, int Xp, long DamageGiven, long DamageReceived,
+        long Gibs, long SelfKills, long TeamKills, long TeamGibs, long Kills, long KnifeKills, long Deaths,
         long Headshots, long Revives, long MultiKills2, long MultiKills3, long MultiKills4,
         long MultiKills5, long MultiKills6, long WeaponHits, long WeaponAtts);
 
@@ -104,6 +104,7 @@ else
                 .ToDictionary(g => g.Key, g => new
                 {
                     Kills = g.Where(x => x.Weapon != 27).Sum(x => (long)x.Kills),
+                    KnifeKills = g.Where(x => x.Weapon == 0).Sum(x => (long)x.Kills),
                     Deaths = g.Where(x => x.Weapon != 27).Sum(x => (long)x.Deaths),
                     Headshots = g.Where(x => x.Weapon != 27).Sum(x => (long)x.Headshots),
                     Revives = g.Where(x => x.Weapon == 27).Sum(x => (long)x.Hits),
@@ -122,13 +123,18 @@ else
                     .ThenByDescending(x => x.IngestedAtUtc)
                     .Select(x => x.Name)
                     .FirstOrDefault();
+                var lastPlayedUtc = g
+                    .Select(x => x.RoundStartUnix > 0
+                        ? DateTimeOffset.FromUnixTimeSeconds(x.RoundStartUnix).UtcDateTime
+                        : DateTime.SpecifyKind(x.IngestedAtUtc, DateTimeKind.Utc))
+                    .Max();
                 var guid = g.Key;
                 weaponsByGuid.TryGetValue(guid, out var weapon);
                 return new PlayerTotals(
                     guid, string.IsNullOrWhiteSpace(latestName) ? guid : latestName,
-                    matchGroups.Count, rounds.Sum(x => x.Xp), rounds.Sum(x => (long)x.DamageGiven), rounds.Sum(x => (long)x.DamageReceived),
+                    matchGroups.Count, lastPlayedUtc, rounds.Sum(x => x.Xp), rounds.Sum(x => (long)x.DamageGiven), rounds.Sum(x => (long)x.DamageReceived),
                     rounds.Sum(x => (long)x.Gibs), rounds.Sum(x => (long)x.SelfKills), rounds.Sum(x => (long)x.TeamKills), rounds.Sum(x => (long)x.TeamGibs),
-                    weapon?.Kills ?? 0, weapon?.Deaths ?? 0, weapon?.Headshots ?? 0, weapon?.Revives ?? 0,
+                    weapon?.Kills ?? 0, weapon?.KnifeKills ?? 0, weapon?.Deaths ?? 0, weapon?.Headshots ?? 0, weapon?.Revives ?? 0,
                     rounds.Sum(x => (long)x.MultiKills2), rounds.Sum(x => (long)x.MultiKills3), rounds.Sum(x => (long)x.MultiKills4),
                     rounds.Sum(x => (long)x.MultiKills5), rounds.Sum(x => (long)x.MultiKills6), weapon?.Hits ?? 0, weapon?.Atts ?? 0);
             }).ToList();
@@ -138,6 +144,7 @@ else
                 Board("Games", totals, p => p.Games),
                 Board("XP", totals, p => p.Xp),
                 Board("Kills", totals, p => p.Kills),
+                Board("Knife kills", totals, p => p.KnifeKills),
                 Board("Deaths", totals, p => p.Deaths),
                 Board("K/D", totals, p => p.Deaths == 0 ? p.Kills : (double)p.Kills / p.Deaths, "0.00"),
                 Board("Headshots", totals, p => p.Headshots),
@@ -168,7 +175,9 @@ else
 
     private static Scoreboard Board(string title, List<PlayerTotals> players, Func<PlayerTotals, double> value, string format = "N0", string suffix = "")
         => new(title,
-            players.Select(p => new ScoreRow(p.Guid, p.Name, value(p)))
+            players.Where(p => p.Games >= 20 && p.LastPlayedUtc >= DateTime.UtcNow.AddMonths(-1))
+                .Select(p => new ScoreRow(p.Guid, p.Name, value(p)))
+                .Where(row => row.Value > 0)
                 .OrderByDescending(x => x.Value).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).Take(5).ToList(),
             value => value.ToString(format, System.Globalization.CultureInfo.InvariantCulture) + suffix);
 }
