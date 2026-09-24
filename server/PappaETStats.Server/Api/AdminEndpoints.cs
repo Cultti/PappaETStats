@@ -378,11 +378,17 @@ public static class AdminEndpoints
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
 
         var players = await db.MatchPlayers
-            .Select(p => new { p.Id, p.Guid })
+            .Select(p => new
+            {
+                p.Id,
+                p.Guid,
+                MatchId = p.MatchSide.MatchRound.MatchId,
+                p.MatchSide.MatchRound.RoundNumber,
+            })
             .ToListAsync(cancellationToken);
-        var playerIdsByGuid = players
+        var playerIdsByMatchRoundGuid = players
             .Where(p => !string.IsNullOrWhiteSpace(p.Guid))
-            .GroupBy(p => p.Guid, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(p => PlayerRoundKey(p.MatchId, p.RoundNumber, p.Guid))
             .ToDictionary(g => g.Key, g => g.Select(p => p.Id).ToArray(), StringComparer.OrdinalIgnoreCase);
 
         var obituaryRows = await db.MatchObituaries
@@ -414,7 +420,8 @@ public static class AdminEndpoints
             foreach (var killGroup in roundKills)
             {
                 var count = killGroup.Count();
-                if (count is < 2 or > 6 || !playerIdsByGuid.TryGetValue(killGroup.Key.Attacker, out var matchingPlayerIds))
+                var playerKey = PlayerRoundKey(matchGroup.Key, roundGroup.Key, killGroup.Key.Attacker);
+                if (count is < 2 or > 6 || !playerIdsByMatchRoundGuid.TryGetValue(playerKey, out var matchingPlayerIds))
                 {
                     continue;
                 }
@@ -451,6 +458,9 @@ public static class AdminEndpoints
 
     private static string ObituaryKey(long timestamp, string? target, string? attacker, int meansOfDeath)
         => $"{timestamp}|{target?.Trim().ToUpperInvariant()}|{attacker?.Trim().ToUpperInvariant()}|{meansOfDeath}";
+
+    private static string PlayerRoundKey(Guid matchId, int roundNumber, string guid)
+        => $"{matchId:N}|{roundNumber}|{guid.Trim().ToUpperInvariant()}";
 
     private static async Task<IResult> MergePlayerGuidAsync(
         HttpRequest request,
