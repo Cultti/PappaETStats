@@ -77,22 +77,18 @@ else
         try
         {
             await using var db = await DbFactory.CreateDbContextAsync();
-            var players = await (
+            // Keep this query flat. Grouping players and projecting a nested collection makes
+            // EF generate a correlated subquery plus a wide join, which times out on MariaDB.
+            var playerRows = await (
                 from p in db.MatchPlayers.AsNoTracking()
                 join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
                 join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
                 where p.Guid != null && p.Guid != ""
-                group p by p.Guid into g
                 select new
                 {
-                    Guid = g.Key,
-                    Name = g.OrderByDescending(p => p.Name != null && p.Name != "").Select(p => p.Name).First(),
-                    Rounds = g.Select(p => new
-                    {
-                        p.Xp, p.DamageGiven, p.DamageReceived, p.Gibs, p.SelfKills, p.TeamKills, p.TeamGibs,
-                        p.MultiKills2, p.MultiKills3, p.MultiKills4, p.MultiKills5, p.MultiKills6,
-                        p.MatchSide.MatchRound.MatchId, p.MatchSide.MatchRound.RoundNumber
-                    }).ToList()
+                    p.Guid, p.Name, r.MatchId, r.RoundNumber, r.RoundStartUnix, r.IngestedAtUtc,
+                    p.Xp, p.DamageGiven, p.DamageReceived, p.Gibs, p.SelfKills, p.TeamKills, p.TeamGibs,
+                    p.MultiKills2, p.MultiKills3, p.MultiKills4, p.MultiKills5, p.MultiKills6
                 }
             ).ToListAsync();
 
@@ -115,19 +111,21 @@ else
                     Atts = g.Where(x => x.Weapon != 27).Sum(x => (long)x.Atts),
                 }, StringComparer.OrdinalIgnoreCase);
 
-            var totals = players.Select(p =>
+            var totals = playerRows.GroupBy(p => p.Guid, StringComparer.OrdinalIgnoreCase).Select(g =>
             {
-                var matchGroups = p.Rounds.GroupBy(x => x.MatchId).ToList();
-                var rounds = matchGroups.SelectMany(match =>
-                {
-                    var rows = match.ToList();
-                    // Round stats are cumulative in some ET feeds. Keep the final round per match.
-                    var lastRound = rows.Max(x => x.RoundNumber);
-                    return rows.Where(x => x.RoundNumber == lastRound).Take(1);
-                }).ToList();
-                weaponsByGuid.TryGetValue(p.Guid, out var weapon);
+                var matchGroups = g.GroupBy(x => x.MatchId).ToList();
+                // Player totals are recorded per round. In particular, multi-kills are
+                // calculated from that round's obituary stream, so both rounds count.
+                var rounds = g.ToList();
+                var latestName = g.Where(x => !string.IsNullOrWhiteSpace(x.Name))
+                    .OrderByDescending(x => x.RoundStartUnix)
+                    .ThenByDescending(x => x.IngestedAtUtc)
+                    .Select(x => x.Name)
+                    .FirstOrDefault();
+                var guid = g.Key;
+                weaponsByGuid.TryGetValue(guid, out var weapon);
                 return new PlayerTotals(
-                    p.Guid, string.IsNullOrWhiteSpace(p.Name) ? p.Guid : p.Name,
+                    guid, string.IsNullOrWhiteSpace(latestName) ? guid : latestName,
                     matchGroups.Count, rounds.Sum(x => x.Xp), rounds.Sum(x => (long)x.DamageGiven), rounds.Sum(x => (long)x.DamageReceived),
                     rounds.Sum(x => (long)x.Gibs), rounds.Sum(x => (long)x.SelfKills), rounds.Sum(x => (long)x.TeamKills), rounds.Sum(x => (long)x.TeamGibs),
                     weapon?.Kills ?? 0, weapon?.Deaths ?? 0, weapon?.Headshots ?? 0, weapon?.Revives ?? 0,

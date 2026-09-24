@@ -762,6 +762,11 @@ else
         public int SelfKills { get; set; }
         public int TeamKills { get; set; }
         public int TeamGibs { get; set; }
+        public int MultiKills2 { get; set; }
+        public int MultiKills3 { get; set; }
+        public int MultiKills4 { get; set; }
+        public int MultiKills5 { get; set; }
+        public int MultiKills6 { get; set; }
 
         public Dictionary<int, MatchPlayerWeaponStat> WeaponStatsByWeapon { get; } = new();
 
@@ -828,6 +833,11 @@ else
                 acc.SelfKills += p.SelfKills;
                 acc.TeamKills += p.TeamKills;
                 acc.TeamGibs += p.TeamGibs;
+                acc.MultiKills2 += p.MultiKills2;
+                acc.MultiKills3 += p.MultiKills3;
+                acc.MultiKills4 += p.MultiKills4;
+                acc.MultiKills5 += p.MultiKills5;
+                acc.MultiKills6 += p.MultiKills6;
 
                 if (p.TimePlayedPercent > 0)
                 {
@@ -928,6 +938,11 @@ else
                 SelfKills = acc.SelfKills,
                 TeamKills = acc.TeamKills,
                 TeamGibs = acc.TeamGibs,
+                MultiKills2 = acc.MultiKills2,
+                MultiKills3 = acc.MultiKills3,
+                MultiKills4 = acc.MultiKills4,
+                MultiKills5 = acc.MultiKills5,
+                MultiKills6 = acc.MultiKills6,
                 WeaponStats = weaponStats,
                 ClassStats = classStats,
             };

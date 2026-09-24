@@ -18,7 +18,6 @@
         }
         <col style="width: var(--pappa-col-kdr);" />
         <col style="width: var(--pappa-col-2);" />
-        <col style="width: var(--pappa-col-5);" />
         <col style="width: var(--pappa-col-2);" />
         <col style="width: var(--pappa-col-5);" />
         <col style="width: var(--pappa-col-5);" />
@@ -93,15 +92,6 @@
             </FooterTemplate>
         </TemplateColumn>
 
-        <TemplateColumn T="PlayerStatsGridRow" Title="Multi-kills" HeaderClass="pappa-col-num pappa-col-5" CellClass="pappa-col-num pappa-col-5">
-            <CellTemplate>
-                @($"2K {context.Item.MultiKills2} · 3K {context.Item.MultiKills3} · 4K {context.Item.MultiKills4} · 5K {context.Item.MultiKills5} · 6K {context.Item.MultiKills6}")
-            </CellTemplate>
-            <FooterTemplate>
-                <div><strong>@($"2K {Players.Sum(p => p.MultiKills2)} · 3K {Players.Sum(p => p.MultiKills3)} · 4K {Players.Sum(p => p.MultiKills4)} · 5K {Players.Sum(p => p.MultiKills5)} · 6K {Players.Sum(p => p.MultiKills6)}")</strong></div>
-            </FooterTemplate>
-        </TemplateColumn>
-
         <PropertyColumn T="PlayerStatsGridRow" TProperty="int" Property="x => x.DamageGiven" Title="Dmg G" HeaderClass="pappa-col-num pappa-col-5" CellClass="pappa-col-num pappa-col-5">
             <FooterTemplate>
                 <div><strong>@Players.Sum(p => p.DamageGiven)</strong></div>
@@ -157,50 +147,50 @@
 
         <MudCard Elevation="0" Class="mt-2" Style="border:1px solid var(--mud-palette-lines-default)">
             <MudCardContent Class="pa-0">
-                @if (ShowTeamStats || context.Item.ClassStats.Count > 0)
-                {
-                    <MudGrid Class="pa-4" Spacing="2">
-                        @if (ShowTeamStats)
-                        {
-                            <MudItem xs="12" md="6">
-                                @{
-                                    var teamRows = new[]
-                                    {
-                                        new { Label = "Teamkills", Value = context.Item.TeamKills.ToString(System.Globalization.CultureInfo.InvariantCulture) },
-                                        new { Label = "Team Damage Given", Value = context.Item.TeamDamageGiven.ToString(System.Globalization.CultureInfo.InvariantCulture) },
-                                        new { Label = "Team Damage Received", Value = context.Item.TeamDamageReceived.ToString(System.Globalization.CultureInfo.InvariantCulture) },
-                                    };
-                                }
-                                <MudTable Dense="true" Hover="false" Breakpoint="Breakpoint.Sm" Items="teamRows" Context="row" Elevation="0">
-                                    <ColGroup>
-                                        <col />
-                                        <col style="width:8ch;" />
-                                    </ColGroup>
-                                    <RowTemplate>
-                                        <MudTd DataLabel="Stat">@row.Label</MudTd>
-                                        <MudTd DataLabel="Value" align="Align.Right">@row.Value</MudTd>
-                                    </RowTemplate>
-                                </MudTable>
-                            </MudItem>
-                        }
-
-                        @if (context.Item.ClassStats.Count > 0)
-                        {
-                            <MudItem xs="12" md="6">
-                                <MudTable Dense="true" Hover="false" Breakpoint="Breakpoint.Sm" Items="context.Item.ClassStats" Context="row" Elevation="0">
-                                    <ColGroup>
-                                        <col />
-                                        <col style="width:6ch;" />
-                                    </ColGroup>
-                                    <RowTemplate>
-                                        <MudTd DataLabel="Class">@row.Name</MudTd>
-                                        <MudTd DataLabel="Time" align="Align.Right">@row.TimeText</MudTd>
-                                    </RowTemplate>
-                                </MudTable>
-                            </MudItem>
-                        }
-                    </MudGrid>
-                }
+                <MudGrid Class="pa-4" Spacing="2">
+                    <MudItem xs="12" md="6">
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">Multi-kills</MudText>
+                        <MudStack Row="true" Spacing="2" Style="flex-wrap:wrap">
+                            <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small">2K: @context.Item.MultiKills2</MudChip>
+                            <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small">3K: @context.Item.MultiKills3</MudChip>
+                            <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small">4K: @context.Item.MultiKills4</MudChip>
+                            <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small">5K: @context.Item.MultiKills5</MudChip>
+                            <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small">6K: @context.Item.MultiKills6</MudChip>
+                        </MudStack>
+                    </MudItem>
+                    @if (ShowTeamStats)
+                    {
+                        <MudItem xs="12" md="6">
+                            @{
+                                var teamRows = new[]
+                                {
+                                    new { Label = "Teamkills", Value = context.Item.TeamKills.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                                    new { Label = "Team Damage Given", Value = context.Item.TeamDamageGiven.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                                    new { Label = "Team Damage Received", Value = context.Item.TeamDamageReceived.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                                };
+                            }
+                            <MudTable Dense="true" Hover="false" Breakpoint="Breakpoint.Sm" Items="teamRows" Context="row" Elevation="0">
+                                <ColGroup><col /><col style="width:8ch;" /></ColGroup>
+                                <RowTemplate>
+                                    <MudTd DataLabel="Stat">@row.Label</MudTd>
+                                    <MudTd DataLabel="Value" align="Align.Right">@row.Value</MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        </MudItem>
+                    }
+                    @if (context.Item.ClassStats.Count > 0)
+                    {
+                        <MudItem xs="12" md="6">
+                            <MudTable Dense="true" Hover="false" Breakpoint="Breakpoint.Sm" Items="context.Item.ClassStats" Context="row" Elevation="0">
+                                <ColGroup><col /><col style="width:6ch;" /></ColGroup>
+                                <RowTemplate>
+                                    <MudTd DataLabel="Class">@row.Name</MudTd>
+                                    <MudTd DataLabel="Time" align="Align.Right">@row.TimeText</MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        </MudItem>
+                    }
+                </MudGrid>
 
                 @if (weaponStats.Count == 0)
                 {
