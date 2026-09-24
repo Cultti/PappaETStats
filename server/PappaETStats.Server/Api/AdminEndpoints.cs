@@ -387,15 +387,28 @@ public static class AdminEndpoints
 
         var obituaryRows = await db.MatchObituaries
             .Where(o => o.AttackerGuid != null)
-            .Select(o => new { o.MatchRoundId, o.TimestampMs, o.AttackerGuid, o.MeansOfDeath })
+            .Select(o => new
+            {
+                o.TimestampMs, o.TargetGuid, o.AttackerGuid, o.MeansOfDeath,
+                o.MatchRound.MatchId, o.MatchRound.RoundNumber
+            })
             .ToListAsync(cancellationToken);
 
         var playerCounts = new Dictionary<Guid, int[]>();
         var qualifyingGroups = 0;
-        foreach (var roundGroup in obituaryRows.GroupBy(o => o.MatchRoundId))
+        foreach (var matchGroup in obituaryRows.GroupBy(o => o.MatchId))
         {
+            var round1Events = matchGroup
+                .Where(o => o.RoundNumber == 1)
+                .Select(o => ObituaryKey(o.TimestampMs, o.TargetGuid, o.AttackerGuid, o.MeansOfDeath))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var roundGroup in matchGroup.GroupBy(o => o.RoundNumber))
+            {
             var roundKills = roundGroup
-                .Where(o => o.TimestampMs >= 0 && !string.IsNullOrWhiteSpace(o.AttackerGuid))
+                .Where(o => o.TimestampMs >= 0
+                            && !string.IsNullOrWhiteSpace(o.AttackerGuid)
+                            && (roundGroup.Key != 2 || !round1Events.Contains(ObituaryKey(o.TimestampMs, o.TargetGuid, o.AttackerGuid, o.MeansOfDeath))))
                 .GroupBy(o => (Attacker: o.AttackerGuid!, o.TimestampMs, o.MeansOfDeath));
 
             foreach (var killGroup in roundKills)
@@ -418,6 +431,7 @@ public static class AdminEndpoints
                     counts[count - 2]++;
                 }
             }
+            }
         }
 
         // Update only these counters so recalculation preserves every other match-row value.
@@ -434,6 +448,9 @@ public static class AdminEndpoints
         var updatedPlayers = await db.SaveChangesAsync(cancellationToken);
         return Results.Ok(new { processedPlayers = players.Count, updatedPlayers, qualifyingGroups });
     }
+
+    private static string ObituaryKey(long timestamp, string? target, string? attacker, int meansOfDeath)
+        => $"{timestamp}|{target?.Trim().ToUpperInvariant()}|{attacker?.Trim().ToUpperInvariant()}|{meansOfDeath}";
 
     private static async Task<IResult> MergePlayerGuidAsync(
         HttpRequest request,

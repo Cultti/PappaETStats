@@ -15,6 +15,9 @@ public static class IngestEndpoints
 {
     private sealed record Round1WeaponSnapshot(int Hits, int Atts, int Kills, int Deaths, int Headshots);
 
+    private static string ObituaryKey(long timestamp, string? target, string? attacker, int meansOfDeath)
+        => $"{timestamp}|{target?.Trim().ToUpperInvariant()}|{attacker?.Trim().ToUpperInvariant()}|{meansOfDeath}";
+
     private static int NormalizeCountToInt(long value)
     {
         if (value <= 0)
@@ -283,16 +286,7 @@ public static class IngestEndpoints
         }
 
         var players = dto.Players ?? [];
-        var multiKillsByAttacker = (dto.Obituaries ?? [])
-            .Where(o => !string.IsNullOrWhiteSpace(o.Attacker) && o.Timestamp >= 0)
-            .GroupBy(o => (Attacker: o.Attacker!.Trim(), o.Timestamp, o.MeansOfDeath))
-            .Select(g => (g.Key.Attacker, Count: g.Count()))
-            .Where(x => x.Count is >= 2 and <= 6)
-            .GroupBy(x => x.Attacker, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                g => g.Key,
-                g => new[] { 0, 0, 0, 0, 0 }.Select((_, i) => g.Count(x => x.Count == i + 2)).ToArray(),
-                StringComparer.OrdinalIgnoreCase);
+        var obituaries = dto.Obituaries ?? [];
         var groupedByTeam = players
             .GroupBy(p => p.Team)
             .OrderBy(g => g.Key)
@@ -366,6 +360,21 @@ public static class IngestEndpoints
 
             if (round1 is not null)
             {
+                // The Lua module retains obituary events through map_restart. Round 2's
+                // payload can therefore repeat every round 1 event with the same uptime
+                // timestamp. Exclude those duplicates before storing or counting streaks.
+                var round1Obituaries = await db.MatchObituaries
+                    .AsNoTracking()
+                    .Where(o => o.MatchRoundId == round1.Id)
+                    .Select(o => new { o.TimestampMs, o.TargetGuid, o.AttackerGuid, o.MeansOfDeath })
+                    .ToListAsync(cancellationToken);
+                var round1Events = round1Obituaries
+                    .Select(o => ObituaryKey(o.TimestampMs, o.TargetGuid, o.AttackerGuid, o.MeansOfDeath))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                obituaries = obituaries
+                    .Where(o => !round1Events.Contains(ObituaryKey(o.Timestamp, o.Target, o.Attacker, o.MeansOfDeath)))
+                    .ToList();
+
                 foreach (var p1 in round1.Sides.SelectMany(s => s.Players))
                 {
                     if (string.IsNullOrWhiteSpace(p1.Guid))
@@ -401,6 +410,17 @@ public static class IngestEndpoints
                 }
             }
         }
+
+        var multiKillsByAttacker = obituaries
+            .Where(o => !string.IsNullOrWhiteSpace(o.Attacker) && o.Timestamp >= 0)
+            .GroupBy(o => (Attacker: o.Attacker!.Trim(), o.Timestamp, o.MeansOfDeath))
+            .Select(g => (g.Key.Attacker, Count: g.Count()))
+            .Where(x => x.Count is >= 2 and <= 6)
+            .GroupBy(x => x.Attacker, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => new[] { 0, 0, 0, 0, 0 }.Select((_, i) => g.Count(x => x.Count == i + 2)).ToArray(),
+                StringComparer.OrdinalIgnoreCase);
 
         var canNormalizeRound2 = dto.Round == 2 && round1ByGuid.Count > 0;
         var weaponStatsAreCumulative = canNormalizeRound2 && LooksCumulativeWeaponStats(players, round1ByGuid);
@@ -567,7 +587,7 @@ public static class IngestEndpoints
             round.Sides.Add(side);
         }
 
-        foreach (var o in dto.Obituaries ?? [])
+        foreach (var o in obituaries)
         {
             static string? NormGuidOrNull(string? value)
             {
