@@ -123,3 +123,42 @@ h1:focus {
     white-space: nowrap;
 }
 
+.scoreboard-card {
+    height: 100%;
+    border: 1px solid var(--mud-palette-lines-default);
+    background: linear-gradient(145deg, var(--mud-palette-surface), rgba(122, 162, 247, 0.035));
+}
+
+.scoreboard-row {
+    min-height: 2.35rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.scoreboard-row:last-child {
+    border-bottom: 0;
+}
+
+.scoreboard-player {
+    min-width: 0;
+}
+
+.scoreboard-rank {
+    width: 1.5rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.scoreboard-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scoreboard-value {
+    flex-shrink: 0;
+    padding-left: 0.75rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+

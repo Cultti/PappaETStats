@@ -1,0 +1,176 @@
+@page "/scoreboards"
+@using Microsoft.EntityFrameworkCore
+@using PappaETStats.Server.Data
+@using PappaETStats.Server.Domain
+@inject IDbContextFactory<StatsDbContext> DbFactory
+
+<PageTitle>Scoreboards</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-1">Scoreboards</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">Top five players across all recorded matches for each stat.</MudText>
+
+@if (_loadError is not null)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_loadError</MudAlert>
+}
+else if (_isLoading)
+{
+    <MudText Color="Color.Secondary"><em>Loading scoreboards…</em></MudText>
+}
+else if (_scoreboards.Count == 0)
+{
+    <MudText>No player stats have been recorded yet.</MudText>
+}
+else
+{
+    <MudGrid Spacing="3">
+        @foreach (var board in _scoreboards)
+        {
+            <MudItem xs="12" sm="6" lg="4">
+                <MudPaper Class="pa-4 scoreboard-card" Elevation="2">
+                    <MudText Typo="Typo.h6" Class="mb-3">@board.Title</MudText>
+                    @if (board.Rows.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No stats recorded.</MudText>
+                    }
+                    else
+                    {
+                        <MudStack Spacing="1">
+                            @for (var i = 0; i < board.Rows.Count; i++)
+                            {
+                                var row = board.Rows[i];
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="scoreboard-row">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="scoreboard-player">
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="scoreboard-rank">@(i + 1)</MudText>
+                                        <MudLink Href="@($"/player/{Uri.EscapeDataString(row.Guid)}")" Underline="Underline.Hover" Class="scoreboard-name">
+                                            <EtColoredText Text="@row.Name" />
+                                        </MudLink>
+                                    </MudStack>
+                                    <MudText Typo="Typo.body2" Class="scoreboard-value">@board.Format(row.Value)</MudText>
+                                </MudStack>
+                            }
+                        </MudStack>
+                    }
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private sealed record PlayerTotals(
+        string Guid, string Name, int Games, int Xp, long DamageGiven, long DamageReceived,
+        long Gibs, long SelfKills, long TeamKills, long TeamGibs, long Kills, long Deaths,
+        long Headshots, long Revives, long MultiKills2, long MultiKills3, long MultiKills4,
+        long MultiKills5, long MultiKills6, long WeaponHits, long WeaponAtts);
+
+    private sealed record ScoreRow(string Guid, string Name, double Value);
+
+    private sealed record Scoreboard(string Title, List<ScoreRow> Rows, Func<double, string> Format);
+
+    private bool _isLoading = true;
+    private string? _loadError;
+    private List<Scoreboard> _scoreboards = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var players = await (
+                from p in db.MatchPlayers.AsNoTracking()
+                join s in db.MatchSides.AsNoTracking() on p.MatchSideId equals s.Id
+                join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
+                where p.Guid != null && p.Guid != ""
+                group p by p.Guid into g
+                select new
+                {
+                    Guid = g.Key,
+                    Name = g.OrderByDescending(p => p.Name != null && p.Name != "").Select(p => p.Name).First(),
+                    Rounds = g.Select(p => new
+                    {
+                        p.Xp, p.DamageGiven, p.DamageReceived, p.Gibs, p.SelfKills, p.TeamKills, p.TeamGibs,
+                        p.MultiKills2, p.MultiKills3, p.MultiKills4, p.MultiKills5, p.MultiKills6,
+                        p.MatchSide.MatchRound.MatchId, p.MatchSide.MatchRound.RoundNumber
+                    }).ToList()
+                }
+            ).ToListAsync();
+
+            var weaponRows = await (
+                from ws in db.MatchPlayerWeaponStats.AsNoTracking()
+                join p in db.MatchPlayers.AsNoTracking() on ws.MatchPlayerId equals p.Id
+                where p.Guid != null && p.Guid != ""
+                group ws by new { p.Guid, ws.Weapon } into g
+                select new { g.Key.Guid, g.Key.Weapon, Hits = g.Sum(x => x.Hits), Atts = g.Sum(x => x.Atts), Kills = g.Sum(x => x.Kills), Deaths = g.Sum(x => x.Deaths), Headshots = g.Sum(x => x.Headshots) }
+            ).ToListAsync();
+
+            var weaponsByGuid = weaponRows.GroupBy(x => x.Guid, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => new
+                {
+                    Kills = g.Where(x => x.Weapon != 27).Sum(x => (long)x.Kills),
+                    Deaths = g.Where(x => x.Weapon != 27).Sum(x => (long)x.Deaths),
+                    Headshots = g.Where(x => x.Weapon != 27).Sum(x => (long)x.Headshots),
+                    Revives = g.Where(x => x.Weapon == 27).Sum(x => (long)x.Hits),
+                    Hits = g.Where(x => x.Weapon != 27).Sum(x => (long)x.Hits),
+                    Atts = g.Where(x => x.Weapon != 27).Sum(x => (long)x.Atts),
+                }, StringComparer.OrdinalIgnoreCase);
+
+            var totals = players.Select(p =>
+            {
+                var matchGroups = p.Rounds.GroupBy(x => x.MatchId).ToList();
+                var rounds = matchGroups.SelectMany(match =>
+                {
+                    var rows = match.ToList();
+                    // Round stats are cumulative in some ET feeds. Keep the final round per match.
+                    var lastRound = rows.Max(x => x.RoundNumber);
+                    return rows.Where(x => x.RoundNumber == lastRound).Take(1);
+                }).ToList();
+                weaponsByGuid.TryGetValue(p.Guid, out var weapon);
+                return new PlayerTotals(
+                    p.Guid, string.IsNullOrWhiteSpace(p.Name) ? p.Guid : p.Name,
+                    matchGroups.Count, rounds.Sum(x => x.Xp), rounds.Sum(x => (long)x.DamageGiven), rounds.Sum(x => (long)x.DamageReceived),
+                    rounds.Sum(x => (long)x.Gibs), rounds.Sum(x => (long)x.SelfKills), rounds.Sum(x => (long)x.TeamKills), rounds.Sum(x => (long)x.TeamGibs),
+                    weapon?.Kills ?? 0, weapon?.Deaths ?? 0, weapon?.Headshots ?? 0, weapon?.Revives ?? 0,
+                    rounds.Sum(x => (long)x.MultiKills2), rounds.Sum(x => (long)x.MultiKills3), rounds.Sum(x => (long)x.MultiKills4),
+                    rounds.Sum(x => (long)x.MultiKills5), rounds.Sum(x => (long)x.MultiKills6), weapon?.Hits ?? 0, weapon?.Atts ?? 0);
+            }).ToList();
+
+            _scoreboards =
+            [
+                Board("Games", totals, p => p.Games),
+                Board("XP", totals, p => p.Xp),
+                Board("Kills", totals, p => p.Kills),
+                Board("Deaths", totals, p => p.Deaths),
+                Board("K/D", totals, p => p.Deaths == 0 ? p.Kills : (double)p.Kills / p.Deaths, "0.00"),
+                Board("Headshots", totals, p => p.Headshots),
+                Board("Revives", totals, p => p.Revives),
+                Board("Damage given", totals, p => p.DamageGiven),
+                Board("Damage received", totals, p => p.DamageReceived),
+                Board("Gibs", totals, p => p.Gibs),
+                Board("Self kills", totals, p => p.SelfKills),
+                Board("Team kills", totals, p => p.TeamKills),
+                Board("Team gibs", totals, p => p.TeamGibs),
+                Board("Double kills", totals, p => p.MultiKills2),
+                Board("Triple kills", totals, p => p.MultiKills3),
+                Board("Quad kills", totals, p => p.MultiKills4),
+                Board("5-kill streaks", totals, p => p.MultiKills5),
+                Board("6-kill streaks", totals, p => p.MultiKills6),
+                Board("Weapon accuracy", totals.Where(p => p.WeaponAtts >= 100).ToList(), p => p.WeaponAtts == 0 ? 0 : 100d * p.WeaponHits / p.WeaponAtts, "0.0", "%"),
+            ];
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static Scoreboard Board(string title, List<PlayerTotals> players, Func<PlayerTotals, double> value, string format = "N0", string suffix = "")
+        => new(title,
+            players.Select(p => new ScoreRow(p.Guid, p.Name, value(p)))
+                .OrderByDescending(x => x.Value).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).Take(5).ToList(),
+            value => value.ToString(format, System.Globalization.CultureInfo.InvariantCulture) + suffix);
+}
