@@ -125,6 +125,26 @@ else
                             <td>XP</td>
                             <td style="text-align:right;">@_vm.Aggregate.Xp</td>
                         </tr>
+                        <tr>
+                            <td>2K</td>
+                            <td style="text-align:right;">@_vm.Aggregate.MultiKills2</td>
+                        </tr>
+                        <tr>
+                            <td>3K</td>
+                            <td style="text-align:right;">@_vm.Aggregate.MultiKills3</td>
+                        </tr>
+                        <tr>
+                            <td>4K</td>
+                            <td style="text-align:right;">@_vm.Aggregate.MultiKills4</td>
+                        </tr>
+                        <tr>
+                            <td>5K</td>
+                            <td style="text-align:right;">@_vm.Aggregate.MultiKills5</td>
+                        </tr>
+                        <tr>
+                            <td>6K</td>
+                            <td style="text-align:right;">@_vm.Aggregate.MultiKills6</td>
+                        </tr>
                     </tbody>
                 </MudSimpleTable>
             </MudItem>
@@ -222,7 +242,12 @@ else
         int Deaths,
         double Kdr,
         int Headshots,
-        int Revives);
+        int Revives,
+        int MultiKills2,
+        int MultiKills3,
+        int MultiKills4,
+        int MultiKills5,
+        int MultiKills6);
 
     private sealed record NemesisRow(string Guid, string DisplayName);
 
@@ -396,6 +421,11 @@ else
                     p.SelfKills,
                     p.TeamKills,
                     p.TeamGibs,
+                    p.MultiKills2,
+                    p.MultiKills3,
+                    p.MultiKills4,
+                    p.MultiKills5,
+                    p.MultiKills6,
                 }
             ).ToListAsync();
 
@@ -413,6 +443,11 @@ else
                     SelfKills = g.Sum(x => x.SelfKills),
                     TeamKills = g.Sum(x => x.TeamKills),
                     TeamGibs = g.Sum(x => x.TeamGibs),
+                    MultiKills2 = g.Sum(x => x.MultiKills2),
+                    MultiKills3 = g.Sum(x => x.MultiKills3),
+                    MultiKills4 = g.Sum(x => x.MultiKills4),
+                    MultiKills5 = g.Sum(x => x.MultiKills5),
+                    MultiKills6 = g.Sum(x => x.MultiKills6),
                 })
                 .ToList();
 
@@ -555,7 +590,12 @@ else
                 Deaths: totalDeaths,
                 Kdr: kdr,
                 Headshots: totalHeadshots,
-                Revives: totalRevives);
+                Revives: totalRevives,
+                MultiKills2: overallByMatch.Sum(x => x.MultiKills2),
+                MultiKills3: overallByMatch.Sum(x => x.MultiKills3),
+                MultiKills4: overallByMatch.Sum(x => x.MultiKills4),
+                MultiKills5: overallByMatch.Sum(x => x.MultiKills5),
+                MultiKills6: overallByMatch.Sum(x => x.MultiKills6));
 
             // Match list (prefer round 2 info, fall back to round 1).
             var matchesById = await (
