@@ -18,19 +18,6 @@ public static class IngestEndpoints
     private static string ObituaryKey(long timestamp, string? target, string? attacker, int meansOfDeath)
         => $"{timestamp}|{target?.Trim().ToUpperInvariant()}|{attacker?.Trim().ToUpperInvariant()}|{meansOfDeath}";
 
-    private static bool IsEnemyKill(string? attacker, string? target, IReadOnlyDictionary<string, int> playerTeams)
-    {
-        if (string.IsNullOrWhiteSpace(attacker) || string.IsNullOrWhiteSpace(target)
-            || string.Equals(attacker.Trim(), target.Trim(), StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        return playerTeams.TryGetValue(attacker.Trim(), out var attackerTeam)
-               && playerTeams.TryGetValue(target.Trim(), out var targetTeam)
-               && attackerTeam != targetTeam;
-    }
-
     private static int NormalizeCountToInt(long value)
     {
         if (value <= 0)
@@ -428,16 +415,10 @@ public static class IngestEndpoints
             .Where(p => !string.IsNullOrWhiteSpace(p.Guid))
             .GroupBy(p => p.Guid!.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Team, StringComparer.OrdinalIgnoreCase);
-        var multiKillsByAttacker = obituaries
-            .Where(o => o.Timestamp >= 0 && IsEnemyKill(o.Attacker, o.Target, playerTeamsByGuid))
-            .GroupBy(o => (Attacker: o.Attacker!.Trim(), o.Timestamp, o.MeansOfDeath))
-            .Select(g => (g.Key.Attacker, Count: g.Count()))
-            .Where(x => x.Count is >= 2 and <= 6)
-            .GroupBy(x => x.Attacker, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                g => g.Key,
-                g => new[] { 0, 0, 0, 0, 0 }.Select((_, i) => g.Count(x => x.Count == i + 2)).ToArray(),
-                StringComparer.OrdinalIgnoreCase);
+        var multiKillsByAttacker = MultiKillCounter.Count(
+            obituaries.Select(o => new MultiKillEvent(o.Timestamp, o.Attacker, o.Target, o.MeansOfDeath)),
+            playerTeamsByGuid,
+            out _);
 
         var canNormalizeRound2 = dto.Round == 2 && round1ByGuid.Count > 0;
         var weaponStatsAreCumulative = canNormalizeRound2 && LooksCumulativeWeaponStats(players, round1ByGuid);

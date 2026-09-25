@@ -391,11 +391,6 @@ public static class AdminEndpoints
             .Where(p => !string.IsNullOrWhiteSpace(p.Guid))
             .GroupBy(p => PlayerRoundKey(p.MatchId, p.RoundNumber, p.Guid))
             .ToDictionary(g => g.Key, g => g.Select(p => p.Id).ToArray(), StringComparer.OrdinalIgnoreCase);
-        var playerTeamsByMatchRoundGuid = players
-            .Where(p => !string.IsNullOrWhiteSpace(p.Guid))
-            .GroupBy(p => PlayerRoundKey(p.MatchId, p.RoundNumber, p.Guid))
-            .ToDictionary(g => g.Key, g => g.First().Team, StringComparer.OrdinalIgnoreCase);
-
         var obituaryRows = await db.MatchObituaries
             .Where(o => o.AttackerGuid != null)
             .Select(o => new
@@ -416,34 +411,30 @@ public static class AdminEndpoints
 
             foreach (var roundGroup in matchGroup.GroupBy(o => o.RoundNumber))
             {
-            var roundKills = roundGroup
-                .Where(o => o.TimestampMs >= 0
-                            && !string.IsNullOrWhiteSpace(o.AttackerGuid)
-                            && IsEnemyKill(o.MatchId, o.RoundNumber, o.AttackerGuid, o.TargetGuid, playerTeamsByMatchRoundGuid)
-                            && (roundGroup.Key != 2 || !round1Events.Contains(ObituaryKey(o.TimestampMs, o.TargetGuid, o.AttackerGuid, o.MeansOfDeath))))
-                .GroupBy(o => (Attacker: o.AttackerGuid!, o.TimestampMs, o.MeansOfDeath));
+                var roundEvents = roundGroup
+                    .Where(o => roundGroup.Key != 2
+                                || !round1Events.Contains(ObituaryKey(o.TimestampMs, o.TargetGuid, o.AttackerGuid, o.MeansOfDeath)))
+                    .Select(o => new MultiKillEvent(o.TimestampMs, o.AttackerGuid, o.TargetGuid, o.MeansOfDeath));
+                var teamsForRound = players
+                    .Where(p => p.MatchId == matchGroup.Key && p.RoundNumber == roundGroup.Key && !string.IsNullOrWhiteSpace(p.Guid))
+                    .GroupBy(p => p.Guid, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First().Team, StringComparer.OrdinalIgnoreCase);
+                var countsByAttacker = MultiKillCounter.Count(roundEvents, teamsForRound, out var roundQualifyingGroups);
+                qualifyingGroups += roundQualifyingGroups;
 
-            foreach (var killGroup in roundKills)
-            {
-                var count = killGroup.Count();
-                var playerKey = PlayerRoundKey(matchGroup.Key, roundGroup.Key, killGroup.Key.Attacker);
-                if (count is < 2 or > 6 || !playerIdsByMatchRoundGuid.TryGetValue(playerKey, out var matchingPlayerIds))
+                foreach (var (attackerGuid, counts) in countsByAttacker)
                 {
-                    continue;
-                }
-
-                qualifyingGroups++;
-                foreach (var playerId in matchingPlayerIds)
-                {
-                    if (!playerCounts.TryGetValue(playerId, out var counts))
+                    var playerKey = PlayerRoundKey(matchGroup.Key, roundGroup.Key, attackerGuid);
+                    if (!playerIdsByMatchRoundGuid.TryGetValue(playerKey, out var matchingPlayerIds))
                     {
-                        counts = new int[5];
-                        playerCounts[playerId] = counts;
+                        continue;
                     }
 
-                    counts[count - 2]++;
+                    foreach (var playerId in matchingPlayerIds)
+                    {
+                        playerCounts[playerId] = counts.ToArray();
+                    }
                 }
-            }
             }
         }
 
@@ -467,24 +458,6 @@ public static class AdminEndpoints
 
     private static string PlayerRoundKey(Guid matchId, int roundNumber, string guid)
         => $"{matchId:N}|{roundNumber}|{guid.Trim().ToUpperInvariant()}";
-
-    private static bool IsEnemyKill(
-        Guid matchId,
-        int roundNumber,
-        string? attackerGuid,
-        string? targetGuid,
-        IReadOnlyDictionary<string, int> playerTeams)
-    {
-        if (string.IsNullOrWhiteSpace(attackerGuid) || string.IsNullOrWhiteSpace(targetGuid)
-            || string.Equals(attackerGuid.Trim(), targetGuid.Trim(), StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        return playerTeams.TryGetValue(PlayerRoundKey(matchId, roundNumber, attackerGuid), out var attackerTeam)
-               && playerTeams.TryGetValue(PlayerRoundKey(matchId, roundNumber, targetGuid), out var targetTeam)
-               && attackerTeam != targetTeam;
-    }
 
     private static async Task<IResult> MergePlayerGuidAsync(
         HttpRequest request,
