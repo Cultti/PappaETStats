@@ -108,6 +108,7 @@ builder.Services.AddHttpClient("Webhook", client =>
 });
 
 builder.Services.AddSingleton<DemoCompressionQueue>();
+builder.Services.AddSingleton<PappaETStats.Server.Services.ScoreboardCache>();
 builder.Services.AddHostedService<DemoCompressionHostedService>();
 
 var dbOptions = builder.Configuration.GetSection(DbOptions.SectionName).Get<DbOptions>() ?? new DbOptions();

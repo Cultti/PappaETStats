@@ -4,6 +4,7 @@ using PappaETStats.SkillRating;
 using PappaETStats.Server.Data;
 using PappaETStats.Server.Domain;
 using PappaETStats.Server.Options;
+using PappaETStats.Server.Services;
 
 namespace PappaETStats.Server.Api;
 
@@ -71,6 +72,7 @@ public static class AdminEndpoints
         HttpRequest request,
         IDbContextFactory<StatsDbContext> dbFactory,
         IOptions<AdminOptions> adminOptions,
+        ScoreboardCache scoreboardCache,
         Guid matchId,
         CancellationToken cancellationToken)
     {
@@ -95,6 +97,7 @@ public static class AdminEndpoints
                 return Results.NotFound(new { error = "match not found", matchId });
             }
 
+            scoreboardCache.Invalidate();
             return Results.Ok(new { deleted = true, matchId });
         }
         catch (DbUpdateException ex)
@@ -112,6 +115,7 @@ public static class AdminEndpoints
         HttpRequest request,
         IDbContextFactory<StatsDbContext> dbFactory,
         IOptions<AdminOptions> adminOptions,
+        ScoreboardCache scoreboardCache,
         RecalculateMatchWinnersRequest? body,
         CancellationToken cancellationToken)
     {
@@ -190,6 +194,7 @@ public static class AdminEndpoints
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        if (updated > 0) scoreboardCache.Invalidate();
         return Results.Ok(new { processed = matches.Count, updated });
     }
 
@@ -197,6 +202,7 @@ public static class AdminEndpoints
         HttpRequest request,
         IDbContextFactory<StatsDbContext> dbFactory,
         IOptions<AdminOptions> adminOptions,
+        ScoreboardCache scoreboardCache,
         CancellationToken cancellationToken)
     {
         var authResult = ValidateBearerToken(request, adminOptions);
@@ -360,6 +366,7 @@ public static class AdminEndpoints
             };
         });
 
+        scoreboardCache.Invalidate();
         return Results.Ok(result);
     }
 
@@ -367,6 +374,7 @@ public static class AdminEndpoints
         HttpRequest request,
         IDbContextFactory<StatsDbContext> dbFactory,
         IOptions<AdminOptions> adminOptions,
+        ScoreboardCache scoreboardCache,
         CancellationToken cancellationToken)
     {
         var authResult = ValidateBearerToken(request, adminOptions);
@@ -450,6 +458,7 @@ public static class AdminEndpoints
         }
 
         var updatedPlayers = await db.SaveChangesAsync(cancellationToken);
+        if (updatedPlayers > 0) scoreboardCache.Invalidate();
         return Results.Ok(new { processedPlayers = players.Count, updatedPlayers, qualifyingGroups });
     }
 
@@ -463,6 +472,7 @@ public static class AdminEndpoints
         HttpRequest request,
         IDbContextFactory<StatsDbContext> dbFactory,
         IOptions<AdminOptions> adminOptions,
+        ScoreboardCache scoreboardCache,
         MergePlayerGuidRequest? body,
         CancellationToken cancellationToken)
     {
@@ -563,8 +573,10 @@ public static class AdminEndpoints
             await tx.CommitAsync(cancellationToken);
         });
 
+        scoreboardCache.Invalidate();
+
         // Replaying from the merged history is the only correct way to combine
         // ratings from two GUIDs, especially for format-specific tracks.
-        return await RecalculateAllSkillRatingsAsync(request, dbFactory, adminOptions, cancellationToken);
+        return await RecalculateAllSkillRatingsAsync(request, dbFactory, adminOptions, scoreboardCache, cancellationToken);
     }
 }

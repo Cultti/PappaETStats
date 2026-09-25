@@ -7,6 +7,7 @@ using PappaETStats.SkillRating;
 using PappaETStats.Server.Data;
 using PappaETStats.Server.Domain;
 using PappaETStats.Server.Options;
+using PappaETStats.Server.Services;
 using PappaETStats.Server.Util;
 
 namespace PappaETStats.Server.Api;
@@ -259,6 +260,7 @@ public static class IngestEndpoints
         IOptions<WebhookOptions> webhookOptions,
         IHttpClientFactory httpClientFactory,
         ILoggerFactory loggerFactory,
+        ScoreboardCache scoreboardCache,
         MatchIngestDto dto,
         CancellationToken cancellationToken)
     {
@@ -616,6 +618,7 @@ public static class IngestEndpoints
 
         db.MatchRounds.Add(round);
         await db.SaveChangesAsync(cancellationToken);
+        scoreboardCache.Invalidate();
 
         if (dto.Round == 2)
         {
