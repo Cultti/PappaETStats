@@ -151,6 +151,16 @@ local function say_all(message)
     et.trap_SendServerCommand(-1, string.format('chat "%s"', msg))
 end
 
+local function centerprint_all(message)
+    local msg = tostring(message or "")
+    if msg == "" then
+        return
+    end
+
+    msg = msg:gsub("[%c]", " "):gsub('\\', '\\\\'):gsub('"', '\\"')
+    et.trap_SendServerCommand(-1, string.format('cp "%s\\n"', msg))
+end
+
 local function say_client(clientNum, message)
     -- Botin virheet ovat epäluotettua tekstiä; pidetään ne yhdessä rajatussa chat-komennossa.
     local msg = tostring(message or ""):gsub("[%c]", " "):sub(1, 700)
@@ -635,6 +645,14 @@ local function format_mode(mode)
     return "kokonaisrating"
 end
 
+local function format_multiplier(value)
+    local number = tonumber(value)
+    if not number then
+        return tostring(value or "?")
+    end
+    return (string.format("%.2f", number):gsub("0+$", ""):gsub("%.$", ""))
+end
+
 local function apply_team_assignments(t1Players, t2Players, clientNumByGuid)
     if type(clientNumByGuid) ~= "table" then
         return
@@ -679,6 +697,14 @@ local function print_balance_result(response, nameByGuid, clientNumByGuid)
 
     local t1Players = (team1.players or team1.Players or {})
     local t2Players = (team2.players or team2.Players or {})
+
+    local sigmaMultiplier = response.sigmaMultiplier or response.SigmaMultiplier or "?"
+    centerprint_all(string.format(
+        "^3BALANCE VALMIS^7\\n%s\\nSigma-kerroin: %s  |  Pelaajia: %d vs %d",
+        format_mode(response.mode),
+        format_multiplier(sigmaMultiplier),
+        #t1Players,
+        #t2Players))
 
     say_all(string.format("^3Balance:^7 Tiimi 1 %s vs Tiimi 2 %s ^3[%s]", format_pct(p1), format_pct(p2), format_mode(response.mode)))
 
