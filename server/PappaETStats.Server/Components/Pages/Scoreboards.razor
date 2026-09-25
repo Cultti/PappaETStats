@@ -39,9 +39,10 @@ else
                             @for (var i = 0; i < board.Rows.Count; i++)
                             {
                                 var row = board.Rows[i];
+                                var rank = i + 1;
                                 <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="scoreboard-row">
                                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="scoreboard-player">
-                                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="scoreboard-rank">@(i + 1)</MudText>
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="scoreboard-rank">@rank</MudText>
                                         <MudLink Href="@($"/player/{Uri.EscapeDataString(row.Guid)}")" Underline="Underline.Hover" Class="scoreboard-name">
                                             <EtColoredText Text="@row.Name" />
                                         </MudLink>
