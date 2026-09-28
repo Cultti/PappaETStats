@@ -50,10 +50,42 @@ Per side/team:
 The Lua side typically needs:
 
 - API base URL (example: `https://et.aukko.net`)
-- API auth (example: bearer token / API key)
+- API auth (bearer token loaded from a separate key file)
 - Server identifier (so multiple ET servers can post into one backend)
 
 This repo intentionally keeps these as *config values* (cvars or a simple config file) so you can run multiple servers.
+
+### Shared API key
+
+The API and all three ET: Legacy Lua modules use the same bearer token. Generate
+one on a trusted machine and put it in the API deployment's ignored `.env` file:
+
+```bash
+openssl rand -hex 32
+# .env
+PAPPAETSTATS__INGEST__TOKEN=<generated-token>
+```
+
+Put only that token (plus an optional final newline) in a local file, copy it to
+the ET server's default `/etc/pappaetstats/ingest.key` location, and restrict
+access to the account that runs ET: Legacy:
+
+```bash
+sudo install -d -o <et-user> -g <et-group> -m 0700 /etc/pappaetstats
+sudo install -o <et-user> -g <et-group> -m 0600 pappaetstats.key /etc/pappaetstats/ingest.key
+```
+
+The Lua scripts read the key when each module starts; the key is not stored in
+any Lua file. For a different location, set an absolute path before loading the
+Lua modules:
+
+```cfg
+set pappa_api_key_file "/etc/pappaetstats/ingest.key"
+```
+
+The repository ignores `et-server/pappaetstats.key` as an additional safeguard.
+Restart or reload the Lua modules after rotating the key. The API refuses to
+start when `Pappa:Ingest:Token` is empty.
 
 ### Docker Compose deployment
 

@@ -3,7 +3,7 @@ param(
   [string]$BaseUrl = "https://et.aukko.net/api/",
 
   [Parameter(Mandatory = $false)]
-  [string]$Token = "1234567890",
+  [string]$Token = $env:PAPPAETSTATS__INGEST__TOKEN,
 
   [Parameter(Mandatory = $false)]
   [string]$DataPath = ".\\data",
@@ -28,6 +28,10 @@ function Normalize-BaseUrl([string]$url) {
 
 $BaseUrl = Normalize-BaseUrl $BaseUrl
 $endpoint = $BaseUrl + 'matches'
+
+if ([string]::IsNullOrWhiteSpace($Token)) {
+  throw "Token is required. Set PAPPAETSTATS__INGEST__TOKEN or pass -Token."
+}
 
 if (-not (Test-Path -LiteralPath $DataPath)) {
   throw "DataPath not found: $DataPath"

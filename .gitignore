@@ -117,6 +117,7 @@ PublishProfiles/
 
 # Project specific
 et-server/reference/
+et-server/pappaetstats.key
 output/
 server/PappaETStats.Server/App_Data/
 data/

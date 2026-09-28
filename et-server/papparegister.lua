@@ -22,9 +22,9 @@ local version = "1.0-dev"
 -- Backend endpoint
 local REGISTER_API_URL = "https://et.aukko.net/api/players/register"
 
--- Token used by backend (same token as ingest endpoints).
--- Keep empty to omit Authorization header.
-local AUTH_TOKEN = "1234567890"
+-- Read the backend token from a separate file at startup.
+local API_KEY_FILE = "/etc/pappaetstats/ingest.key"
+local AUTH_TOKEN = ""
 
 local json_ok, json = pcall(require, "dkjson")
 if not json_ok then
@@ -33,6 +33,7 @@ end
 
 local trap_GetUserinfo = et.trap_GetUserinfo
 local Info_ValueForKey = et.Info_ValueForKey
+local trap_Cvar_Get = et.trap_Cvar_Get
 
 local function log(message)
     et.G_Print(string.format("^2[%s]^7 %s\n", modname, tostring(message)))
@@ -47,6 +48,46 @@ local function starts_with(s, prefix)
     s = tostring(s or "")
     prefix = tostring(prefix or "")
     return s:sub(1, #prefix) == prefix
+end
+
+local function path_join(a, b)
+    local sep = package.config:sub(1, 1)
+    a = tostring(a or "")
+    b = tostring(b or "")
+    if a == "" then return b end
+    if b == "" then return a end
+    if a:sub(-1) == sep then return a .. b end
+    return a .. sep .. b
+end
+
+local function resolve_api_key_path()
+    local configured = trim(trap_Cvar_Get("pappa_api_key_file"))
+    local path = configured ~= "" and configured or API_KEY_FILE
+    if path:sub(1, 1) == "/" or path:match("^%a:[/\\]") then
+        return path
+    end
+    return path_join(path_join(trap_Cvar_Get("fs_homepath"), trap_Cvar_Get("fs_game")), path)
+end
+
+local function load_api_key()
+    local path = resolve_api_key_path()
+    local file = io.open(path, "rb")
+    if not file then
+        return nil, "cannot read API key file: " .. path
+    end
+    local token = trim(file:read("*all"))
+    file:close()
+    if token == "" then
+        return nil, "API key file is empty: " .. path
+    end
+    if token:find("[%c]") then
+        return nil, "API key contains control characters: " .. path
+    end
+    return token
+end
+
+local function shell_quote(value)
+    return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
 end
 
 local function say_player(clientNum, message)
@@ -122,6 +163,9 @@ local function post_register_request(etGuid, registrationToken)
     if not json then
         return nil, nil, "dkjson not available"
     end
+    if AUTH_TOKEN == "" then
+        return nil, nil, "API key is not configured"
+    end
 
     local payload_json = json.encode({
         etGuid = etGuid,
@@ -140,13 +184,10 @@ local function post_register_request(etGuid, registrationToken)
     local authToken = tostring(AUTH_TOKEN or "")
 
     -- Match pappabalance.lua Authorization header formatting.
-    local curl_cmd = string.format(
-        'curl -sS -o "%s" -w "HTTPSTATUS:%%{http_code}" -X POST -H "Authorization: Bearer %s" -H "Content-Type: application/json" --compressed --connect-timeout 2 --max-time 15 --data-binary @"%s" "%s"',
-        tostring(body_file),
-        tostring(authToken),
-        tostring(temp_file),
-        tostring(REGISTER_API_URL)
-    )
+    local curl_cmd = "curl -sS -o " .. shell_quote(body_file)
+        .. " -w 'HTTPSTATUS:%{http_code}' -X POST -H " .. shell_quote("Authorization: Bearer " .. authToken)
+        .. " -H 'Content-Type: application/json' --compressed --connect-timeout 2 --max-time 15"
+        .. " --data-binary " .. shell_quote("@" .. temp_file) .. " " .. shell_quote(REGISTER_API_URL)
 
     local httpCode, decoded, err = executeCurlJsonWithHttpStatus(curl_cmd, body_file)
 
@@ -196,6 +237,13 @@ end
 
 function et_InitGame(levelTime, randomSeed, restart)
     et.RegisterModname(modname .. " " .. version)
+    local token, tokenError = load_api_key()
+    AUTH_TOKEN = token or ""
+    if AUTH_TOKEN == "" then
+        log("API authentication unavailable: " .. tostring(tokenError))
+    else
+        log("API authentication configured")
+    end
     log("loaded")
 end
 

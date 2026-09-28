@@ -35,7 +35,7 @@ public static class TeamBalanceEndpoints
         var configuredToken = ingestOptions.Value.Token;
         if (string.IsNullOrWhiteSpace(configuredToken))
         {
-            return null;
+            return Results.Unauthorized();
         }
 
         var authHeader = request.Headers.Authorization.ToString();

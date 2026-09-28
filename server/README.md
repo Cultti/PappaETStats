@@ -37,7 +37,7 @@ Suggested environment variables:
 
 - `Pappa__Db__Provider` – `sqlite` (default) or `mariadb`
 - `Pappa__Db__ConnectionString` – provider connection string
-- `Pappa__Ingest__Token` – token required by Lua/ingest callers
+- `Pappa__Ingest__Token` – token required by Lua/ingest callers; the app refuses to start when it is empty
 - `Pappa__Webhook__Url` – full webhook URL (optional)
 - `Pappa__Webhook__Token` – webhook bearer token (optional)
 - `Pappa__Webhook__FrontendBaseUrl` – public base URL used to build a link to MatchDetails (optional)
@@ -111,7 +111,8 @@ it to the registration endpoint below. The Lua module
 [et-server/papparegister.lua](../et-server/papparegister.lua) implements this: it handles
 `/register <token>` (console) and `!register <token>` (chat), posts the player's `cl_guid`
 plus the token to the endpoint, and prints the backend's success/error message to the player.
-Configure `REGISTER_API_URL` and `AUTH_TOKEN` at the top of the script.
+Configure `REGISTER_API_URL` in the script. Authentication is read from the
+shared `pappaetstats.key` file documented in the root README.
 
 The `/settings` page shows the linked ET GUID and instructions for `!voice`.
 Voice movement is requested in game chat; balancing never moves anyone in Discord.
@@ -167,8 +168,9 @@ Responses (all bodies are JSON; error bodies contain an `error` message suitable
   Unregistered players are told which channel to join and directed to `https://et.aukko.net`.
 
 Deploy the updated backend and [pappabalance.lua](../et-server/pappabalance.lua) together.
-Configure `VOICE_API_URL` and `AUTH_TOKEN` in Lua. The backend requires a **nonempty** matching
-`Pappa__Ingest__Token` for voice requests, even if other ingest endpoints allow anonymous calls.
+Configure `VOICE_API_URL` in Lua. Authentication is read from the shared
+`pappaetstats.key` file. Every ingest, balance, registration, demo, and voice
+endpoint requires the matching nonempty `Pappa__Ingest__Token`.
 The obsolete auto-move setting and database column are removed by the `RemoveAutoMoveToVoice`
 migration, applied automatically on backend startup. Linked Discord accounts are preserved.
 

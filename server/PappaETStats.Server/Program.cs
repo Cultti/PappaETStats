@@ -42,7 +42,13 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 
-builder.Services.Configure<IngestOptions>(builder.Configuration.GetSection(IngestOptions.SectionName));
+builder.Services.AddOptions<IngestOptions>()
+    .Bind(builder.Configuration.GetSection(IngestOptions.SectionName))
+    .Validate(options => !string.IsNullOrWhiteSpace(options.Token),
+        $"{IngestOptions.SectionName}:Token is required; API ingest endpoints must not run without authentication.")
+    .Validate(options => options.Token == options.Token?.Trim(),
+        $"{IngestOptions.SectionName}:Token must not have leading or trailing whitespace.")
+    .ValidateOnStart();
 builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminOptions.SectionName));
 builder.Services.Configure<DbOptions>(builder.Configuration.GetSection(DbOptions.SectionName));
 builder.Services.Configure<DemoStorageOptions>(builder.Configuration.GetSection(DemoStorageOptions.SectionName));

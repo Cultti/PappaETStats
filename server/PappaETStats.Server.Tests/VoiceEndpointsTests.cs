@@ -68,6 +68,23 @@ public sealed class VoiceEndpointsTests
         Assert.Equal(0, host.Bot.Calls);
     }
 
+    [Theory]
+    [InlineData("", "secret")]
+    [InlineData("Bearer wrong", "secret")]
+    [InlineData("Bearer secret", "")]
+    public async Task BalanceRequiresConfiguredMatchingBearerToken(string authorization, string configuredToken)
+    {
+        await using var host = await TestHost.Start(configuredToken);
+        host.Client.DefaultRequestHeaders.Remove("Authorization");
+        host.Client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authorization);
+
+        var response = await host.Client.PostAsJsonAsync(
+            "/api/skillratings/balance-teams",
+            new { guids = new[] { AxisGuid, AlliesGuid } });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
     [Fact]
     public async Task SelfMoveOnlySendsRequestedPlayerAndConfirmsBotResult()
     {
@@ -185,6 +202,7 @@ public sealed class VoiceEndpointsTests
                 AxisVoiceChannelName = "Red room", AlliesVoiceChannelName = "Blue room"
             }));
             builder.Services.AddDbContextFactory<StatsDbContext>(o => o.UseSqlite(connection));
+            builder.Services.AddSingleton<PappaETStats.Server.Services.ScoreboardCache>();
             var bot = new BotHandler();
             builder.Services.AddHttpClient("Webhook").ConfigurePrimaryHttpMessageHandler(() => bot);
             var app = builder.Build();

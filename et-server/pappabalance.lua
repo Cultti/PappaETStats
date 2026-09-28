@@ -30,9 +30,9 @@ local voiceAllLastUsed = nil
 local nextVoicePoll = 0
 local pendingTeamAssignments = nil
 
--- Backendin käyttämä token (sama token kuin ingest-endpointeilla).
--- Jätä tyhjäksi, jos Authorization-headeria ei lähetetä.
-local AUTH_TOKEN = "1234567890"
+-- Backendin token luetaan erillisestä tiedostosta käynnistyksen yhteydessä.
+local API_KEY_FILE = "/etc/pappaetstats/ingest.key"
+local AUTH_TOKEN = ""
 
 -- Pyyntöjen lokitus (ET:n tiedostojärjestelmä).
 -- Tiedostot kirjoitetaan alle: <fs_homepath>/<fs_game>/<REQUEST_LOG_DIR>/
@@ -175,6 +175,36 @@ end
 local function trim(s)
     s = tostring(s or "")
     return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function resolve_api_key_path()
+    local configured = trim(trap_Cvar_Get("pappa_api_key_file"))
+    local path = configured ~= "" and configured or API_KEY_FILE
+    if path:sub(1, 1) == "/" or path:match("^%a:[/\\]") then
+        return path
+    end
+
+    local home = tostring(trap_Cvar_Get("fs_homepath") or "")
+    local game = tostring(trap_Cvar_Get("fs_game") or "")
+    return path_join(path_join(home, game), path)
+end
+
+local function load_api_key()
+    local path = resolve_api_key_path()
+    local file = io.open(path, "rb")
+    if not file then
+        return nil, "API key file cannot be read: " .. path
+    end
+
+    local token = trim(file:read("*all"))
+    file:close()
+    if token == "" then
+        return nil, "API key file is empty: " .. path
+    end
+    if token:find("[%c]") then
+        return nil, "API key contains control characters: " .. path
+    end
+    return token
 end
 
 local function starts_with(s, prefix)
@@ -376,6 +406,9 @@ local function cleanup_voice_request(request)
 end
 
 local function start_voice_request(players, recipients, requester)
+    if AUTH_TOKEN == "" then
+        return nil, "API key is not configured."
+    end
     if not json then
         return nil, "dkjson puuttuu"
     end
@@ -574,6 +607,10 @@ local function build_payload_json(guids, sigmaMultiplier, mode)
 end
 
 local function post_balance_request(payload_json)
+    if AUTH_TOKEN == "" then
+        return nil, "API key is not configured."
+    end
+
     local temp_file = os.tmpname() .. ".json"
     local body_file = os.tmpname() .. ".out"
     local f = io.open(temp_file, "w")
@@ -603,13 +640,10 @@ local function post_balance_request(payload_json)
     end
 
     -- Vastaa pappastats.lua:n Authorization-headerin muotoilua.
-    local curl_cmd = string.format(
-        'curl -sS -o "%s" -w "HTTPSTATUS:%%{http_code}" -X POST -H "Authorization: Bearer %s" -H "Content-Type: application/json" --compressed --connect-timeout 2 --max-time 15 --data-binary @"%s" "%s"',
-        tostring(body_file),
-        tostring(authToken),
-        tostring(temp_file),
-        tostring(BALANCE_API_URL)
-    )
+    local curl_cmd = "curl -sS -o " .. shell_quote(body_file)
+        .. " -w 'HTTPSTATUS:%{http_code}' -X POST -H " .. shell_quote("Authorization: Bearer " .. authToken)
+        .. " -H 'Content-Type: application/json' --compressed --connect-timeout 2 --max-time 15"
+        .. " --data-binary " .. shell_quote("@" .. temp_file) .. " " .. shell_quote(BALANCE_API_URL)
 
     local result, err = executeCurlJsonWithHttpStatus(curl_cmd, body_file)
 
@@ -804,6 +838,13 @@ end
 
 function et_InitGame(levelTime, randomSeed, restart)
     et.RegisterModname(modname .. " " .. version)
+    local token, tokenError = load_api_key()
+    AUTH_TOKEN = token or ""
+    if AUTH_TOKEN == "" then
+        log("API authentication unavailable: " .. tostring(tokenError))
+    else
+        log("API authentication configured")
+    end
     local cvar = tonumber(et.trap_Cvar_Get("sv_maxclients"))
     if cvar and cvar > 0 then
         maxClients = cvar

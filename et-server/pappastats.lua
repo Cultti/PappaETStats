@@ -16,6 +16,11 @@ local WEBHOOK_URL = "https://et.aukko.net/api/matches"
 local WEBHOOK_MATCHID_URL = WEBHOOK_URL .. "/matchid"
 local WEBHOOK_DEMO_URL_TEMPLATE = "https://et.aukko.net/api/matches/%s/demo"
 
+-- Read the bearer token from a separate file at startup. The
+-- pappa_api_key_file cvar can override this default location.
+local API_KEY_FILE = "/etc/pappaetstats/ingest.key"
+local AUTH_TOKEN = ""
+
 -- Where to persist outgoing webhook payloads (relative to fs_homepath/fs_game).
 -- Ensure this directory exists on the server (e.g. <fs_homepath>/<fs_game>/stats/).
 local STATS_OUTPUT_DIR = "stats/"
@@ -274,6 +279,42 @@ local function path_join(a, b)
     return a .. b
 end
 
+local function resolve_api_key_path()
+    local configured = tostring(trap_Cvar_Get("pappa_api_key_file") or "")
+    configured = configured:gsub("^%s+", ""):gsub("%s+$", "")
+    local path = configured ~= "" and configured or API_KEY_FILE
+    if path:sub(1, 1) == "/" or path:match("^%a:[/\\]") then
+        return path
+    end
+
+    local home = tostring(trap_Cvar_Get("fs_homepath") or "")
+    local game = tostring(trap_Cvar_Get("fs_game") or "")
+    return path_join(path_join(home, game), path)
+end
+
+local function load_api_key()
+    local path = resolve_api_key_path()
+    local file = io.open(path, "rb")
+    if not file then
+        return nil, "cannot read API key file: " .. path
+    end
+
+    local token = tostring(file:read("*all") or "")
+    file:close()
+    token = token:gsub("^%s+", ""):gsub("%s+$", "")
+    if token == "" then
+        return nil, "API key file is empty: " .. path
+    end
+    if token:find("[%c]") then
+        return nil, "API key contains control characters: " .. path
+    end
+    return token
+end
+
+local function shell_quote(value)
+    return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
+end
+
 local function sanitize_filename_component(s)
     s = tostring(s or "")
     -- Replace anything that could be problematic in filenames or console parsing.
@@ -476,7 +517,8 @@ local function fetchMatchIDFromAPI(authToken, server_ip, server_port, mapname, r
         resolvedRound
     )
 
-    local curl_cmd = string.format('curl -s -H "Authorization: Bearer %s" "%s"', authToken, url)
+    local curl_cmd = "curl -s -H " .. shell_quote("Authorization: Bearer " .. authToken)
+        .. " " .. shell_quote(url)
     local result, err = executeCurlCommandSync(curl_cmd)
     if not result then
         return nil, err
@@ -560,13 +602,11 @@ local function upload_demo_to_backend(authToken)
     local url = string.format(WEBHOOK_DEMO_URL_TEMPLATE, url_encode(current_match_id))
 
     -- Include --retry to avoid executeCurlCommandAsync auto-adding JSON content-type.
-    local curl_cmd = string.format(
-        'curl -X POST -H "Authorization: Bearer %s" --compressed --connect-timeout 2 --max-time 180 --retry 3 --retry-delay 1 --retry-max-time 180 --silent --output /dev/null -F "file=@%s" -F "demoFilename=%s" "%s"',
-        tostring(authToken or ""),
-        tostring(demoPath),
-        tostring(demo_filename),
-        tostring(url)
-    )
+    local curl_cmd = "curl -X POST -H " .. shell_quote("Authorization: Bearer " .. tostring(authToken or ""))
+        .. " --compressed --connect-timeout 2 --max-time 180 --retry 3 --retry-delay 1 --retry-max-time 180"
+        .. " --silent --output /dev/null -F " .. shell_quote("file=@" .. tostring(demoPath))
+        .. " -F " .. shell_quote("demoFilename=" .. tostring(demo_filename))
+        .. " " .. shell_quote(url)
 
     return executeCurlCommandAsyncRaw(curl_cmd)
 end
@@ -673,8 +713,7 @@ local function handle_gamestate_change()
             local server_ip, server_port = getServerIpPort()
             local mapname = get_current_mapname()
 
-            -- Reuse the same token we use for stats sending (currently hardcoded for testing).
-            local authToken = pending_send_token or "1234567890"
+            local authToken = pending_send_token or AUTH_TOKEN
             local fetched, err = fetchMatchIDFromAPI(authToken, server_ip, server_port, mapname, 1)
             if fetched then
                 current_match_id = fetched
@@ -697,7 +736,7 @@ local function handle_gamestate_change()
 
         -- Schedule sending stats a few seconds after intermission starts.
         -- (et_RunFrame will perform the actual send once.)
-        pending_send_token = "1234567890" -- Temporary hardcoded token for testing
+        pending_send_token = AUTH_TOKEN
         pending_send_at_ms = round_end_time + SEND_DELAY_MS
         pending_send = true
 
@@ -750,7 +789,7 @@ local function process_pending_demo_upload()
 
     pending_demo_upload_attempts_left = pending_demo_upload_attempts_left - 1
 
-    local authToken = pending_send_token or "1234567890"
+    local authToken = pending_send_token or AUTH_TOKEN
     local ok, msg = upload_demo_to_backend(authToken)
     if ok then
         pending_demo_upload = false
@@ -947,6 +986,9 @@ function SendStats(authToken)
     if not json then
         return false, "dkjson not available (require('dkjson') failed)"
     end
+    if not authToken or authToken == "" then
+        return false, "API key is not configured"
+    end
 
     local mapname = get_current_mapname()
 
@@ -976,10 +1018,8 @@ function SendStats(authToken)
     -- Persist the exact JSON we are about to POST, for later inspection/debugging.
     savePostedJsonPayload(payload_str)
 
-    local curl_cmd = string.format(
-        'curl -X POST -H "Authorization: Bearer %s" %s',
-        authToken or "noavail",
-        WEBHOOK_URL)
+    local curl_cmd = "curl -X POST -H " .. shell_quote("Authorization: Bearer " .. authToken)
+        .. " " .. shell_quote(WEBHOOK_URL)
 
     local ok, msg = executeCurlCommandAsync(curl_cmd, payload_str)
     if ok then
@@ -1003,6 +1043,14 @@ end
 
 function et_InitGame(levelTime, randomSeed, restart)
     et.RegisterModname(modname .. " " .. version)
+
+    local token, tokenError = load_api_key()
+    AUTH_TOKEN = token or ""
+    if AUTH_TOKEN == "" then
+        log("authentication unavailable: " .. tostring(tokenError))
+    else
+        log("API authentication configured")
+    end
 
     -- Keep only in-memory state; backend match-id endpoint provides continuity across rounds.
     if tonumber(restart) == 0 then
