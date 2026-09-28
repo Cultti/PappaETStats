@@ -258,6 +258,7 @@ public static class IngestEndpoints
         IDbContextFactory<StatsDbContext> dbFactory,
         IOptions<IngestOptions> ingestOptions,
         IOptions<WebhookOptions> webhookOptions,
+        IOptions<SkillRatingOptions> skillRatingOptions,
         IHttpClientFactory httpClientFactory,
         ILoggerFactory loggerFactory,
         ScoreboardCache scoreboardCache,
@@ -630,6 +631,7 @@ public static class IngestEndpoints
                 match,
                 round1ForWinner,
                 round,
+                skillRatingOptions.Value,
                 cancellationToken);
 
             await TrySendGameCompletedWebhookAsync(
@@ -651,6 +653,7 @@ public static class IngestEndpoints
         Match match,
         MatchRound? round1,
         MatchRound round2,
+        SkillRatingOptions options,
         CancellationToken cancellationToken)
     {
         try
@@ -687,7 +690,6 @@ public static class IngestEndpoints
                 return;
             }
 
-            var options = new SkillRatingOptions();
             var calculator = new SkillRatingCalculator(options);
 
             var guidStrings = aggregate.Keys.ToList();

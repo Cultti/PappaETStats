@@ -202,6 +202,7 @@ public static class AdminEndpoints
         HttpRequest request,
         IDbContextFactory<StatsDbContext> dbFactory,
         IOptions<AdminOptions> adminOptions,
+        IOptions<SkillRatingOptions> skillRatingOptions,
         ScoreboardCache scoreboardCache,
         CancellationToken cancellationToken)
     {
@@ -221,7 +222,7 @@ public static class AdminEndpoints
             await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
             await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
 
-            var options = new SkillRatingOptions();
+            var options = skillRatingOptions.Value;
             var calculator = new SkillRatingCalculator(options);
 
             // Reset only ratings: account links and preferences must survive a replay,
@@ -472,6 +473,7 @@ public static class AdminEndpoints
         HttpRequest request,
         IDbContextFactory<StatsDbContext> dbFactory,
         IOptions<AdminOptions> adminOptions,
+        IOptions<SkillRatingOptions> skillRatingOptions,
         ScoreboardCache scoreboardCache,
         MergePlayerGuidRequest? body,
         CancellationToken cancellationToken)
@@ -577,6 +579,12 @@ public static class AdminEndpoints
 
         // Replaying from the merged history is the only correct way to combine
         // ratings from two GUIDs, especially for format-specific tracks.
-        return await RecalculateAllSkillRatingsAsync(request, dbFactory, adminOptions, scoreboardCache, cancellationToken);
+        return await RecalculateAllSkillRatingsAsync(
+            request,
+            dbFactory,
+            adminOptions,
+            skillRatingOptions,
+            scoreboardCache,
+            cancellationToken);
     }
 }

@@ -4,7 +4,8 @@ Standalone skill rating library (mu/sigma Bayesian update) ported from ET: Legac
 
 - Player identity: `Guid`
 - Persistence: none (pure calculations; you store ratings yourself)
-- Update scaling is based on per-player damage contribution across the whole match.
+- Players are weighted equally by default, so damage does not affect rating changes.
+- Damage contribution weighting can be enabled with `SkillRatingOptions.UseDamageContribution`.
 
 ## Quick usage
 

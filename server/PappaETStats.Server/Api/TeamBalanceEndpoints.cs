@@ -54,6 +54,7 @@ public static class TeamBalanceEndpoints
         HttpRequest request,
         IDbContextFactory<StatsDbContext> dbFactory,
         IOptions<IngestOptions> ingestOptions,
+        IOptions<SkillRatingOptions> skillRatingOptions,
         BalanceTeamsRequest body,
         CancellationToken cancellationToken)
     {
@@ -114,7 +115,7 @@ public static class TeamBalanceEndpoints
             guidPairs.Add((guidString, playerId));
         }
 
-        var options = new SkillRatingOptions();
+        var options = skillRatingOptions.Value;
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var existing = await db.Players

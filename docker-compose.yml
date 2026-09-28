@@ -31,6 +31,7 @@ services:
       Pappa__Db__Provider: mariadb
       Pappa__Db__ConnectionString: "Server=mariadb;Port=3306;Database=${MARIADB__DATABASE};User=${MARIADB__USER};Password=${MARIADB__PASSWORD};"
       Pappa__Ingest__Token: ${PAPPAETSTATS__INGEST__TOKEN}
+      Pappa__SkillRating__UseDamageContribution: ${PAPPAETSTATS__SKILL_RATING__USE_DAMAGE_CONTRIBUTION:-false}
       Pappa__DemoStorage__RootPath: /app/App_Data/demos
       Pappa__Webhook__Url: ${PAPPAETSTATS__WEBHOOK__URL}
       Pappa__Webhook__Token: ${PAPPAETSTATS__WEBHOOK__TOKEN}

@@ -38,6 +38,7 @@ Suggested environment variables:
 - `Pappa__Db__Provider` – `sqlite` (default) or `mariadb`
 - `Pappa__Db__ConnectionString` – provider connection string
 - `Pappa__Ingest__Token` – token required by Lua/ingest callers; the app refuses to start when it is empty
+- `Pappa__SkillRating__UseDamageContribution` – whether damage affects rating changes; defaults to `false`
 - `Pappa__Webhook__Url` – full webhook URL (optional)
 - `Pappa__Webhook__Token` – webhook bearer token (optional)
 - `Pappa__Webhook__FrontendBaseUrl` – public base URL used to build a link to MatchDetails (optional)

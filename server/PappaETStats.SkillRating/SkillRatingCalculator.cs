@@ -21,10 +21,11 @@ public sealed class SkillRatingCalculator
     /// Calculates updated ratings for players based on a completed match.
     /// Port of ET: Legacy's G_UpdateSkillRating() core math (DB/persistence excluded).
     /// </summary>
-    /// <param name="players">Per-player team + damage dealt plus pre-match rating.</param>
+    /// <param name="players">Per-player team, damage dealt, and pre-match rating.</param>
     /// <param name="winner">Winning team.</param>
     /// <param name="damageFloor">
-    /// Added to each player's damage when computing contribution weights. Use 0 for pure proportional weighting.
+    /// When damage contribution is enabled, this is added to each player's damage when computing weights.
+    /// Use 0 for pure proportional weighting.
     /// A small value (e.g. 1) prevents players with 0 damage from getting a strict 0 weight.
     /// </param>
     public ImmutableDictionary<Guid, SkillRating> UpdateRatings(
@@ -207,23 +208,36 @@ public sealed class SkillRatingCalculator
 
         var weights = new Dictionary<Guid, double>(capacity: players.Count);
 
-        long totalDamageAxis = 0;
-        long totalDamageAllies = 0;
         var axisPlayers = 0;
         var alliesPlayers = 0;
 
         foreach (var p in players)
         {
-            var dmg = Math.Max(0, p.DamageDealt) + damageFloor;
             if (p.Team == Team.Axis)
             {
-                totalDamageAxis += dmg;
                 axisPlayers++;
             }
             else if (p.Team == Team.Allies)
             {
-                totalDamageAllies += dmg;
                 alliesPlayers++;
+            }
+        }
+
+        long totalDamageAxis = 0;
+        long totalDamageAllies = 0;
+        if (_options.UseDamageContribution)
+        {
+            foreach (var p in players)
+            {
+                var dmg = Math.Max(0, p.DamageDealt) + damageFloor;
+                if (p.Team == Team.Axis)
+                {
+                    totalDamageAxis += dmg;
+                }
+                else if (p.Team == Team.Allies)
+                {
+                    totalDamageAllies += dmg;
+                }
             }
         }
 
@@ -238,11 +252,15 @@ public sealed class SkillRatingCalculator
 
             if (p.Team == Team.Axis)
             {
-                w = totalDamageAxis > 0 ? dmg / (double)totalDamageAxis : equalWeightAxis;
+                w = _options.UseDamageContribution && totalDamageAxis > 0
+                    ? dmg / (double)totalDamageAxis
+                    : equalWeightAxis;
             }
             else if (p.Team == Team.Allies)
             {
-                w = totalDamageAllies > 0 ? dmg / (double)totalDamageAllies : equalWeightAllies;
+                w = _options.UseDamageContribution && totalDamageAllies > 0
+                    ? dmg / (double)totalDamageAllies
+                    : equalWeightAllies;
             }
             else
             {

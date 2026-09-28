@@ -10,6 +10,7 @@ using PappaETStats.Server.Components;
 using PappaETStats.Server.Data;
 using PappaETStats.Server.Options;
 using PappaETStats.Server.Services;
+using PappaETStats.SkillRating;
 
 var baseDirectory = AppContext.BaseDirectory;
 var looksLikePublishedOutput =
@@ -54,6 +55,7 @@ builder.Services.Configure<DbOptions>(builder.Configuration.GetSection(DbOptions
 builder.Services.Configure<DemoStorageOptions>(builder.Configuration.GetSection(DemoStorageOptions.SectionName));
 builder.Services.Configure<WebhookOptions>(builder.Configuration.GetSection(WebhookOptions.SectionName));
 builder.Services.Configure<DiscordOptions>(builder.Configuration.GetSection(DiscordOptions.SectionName));
+builder.Services.Configure<SkillRatingOptions>(builder.Configuration.GetSection(SkillRatingOptions.SectionName));
 
 // Discord OAuth2 login (cookie session). Login is disabled unless ClientId/ClientSecret are configured.
 var discordOptions = builder.Configuration.GetSection(DiscordOptions.SectionName).Get<DiscordOptions>() ?? new DiscordOptions();

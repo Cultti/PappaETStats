@@ -5,6 +5,8 @@ namespace PappaETStats.SkillRating;
 /// </summary>
 public sealed record SkillRatingOptions
 {
+    public const string SectionName = "Pappa:SkillRating";
+
     public double Mu { get; init; } = 25.0;
 
     /// <summary>Default sigma is Mu / 2.</summary>
@@ -20,7 +22,14 @@ public sealed record SkillRatingOptions
     public double Epsilon { get; init; } = 0.0;
 
     /// <summary>
-    /// Controls how strongly damage contribution affects rating deltas.
+    /// When enabled, a player's damage dealt affects team strength and their share of the rating change.
+    /// Disabled by default so every player on a team is weighted equally.
+    /// </summary>
+    public bool UseDamageContribution { get; init; } = false;
+
+    /// <summary>
+    /// Controls how strongly damage contribution affects rating deltas when
+    /// <see cref="UseDamageContribution"/> is enabled.
     /// 1.0 = linear weighting, &gt;1.0 emphasizes top contributors more (and shields them more on losses).
     /// </summary>
     public double ContributionExponent { get; init; } = 1.0;
