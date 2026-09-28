@@ -83,7 +83,7 @@ If a player changes operating system and receives a new ET GUID, merge the old h
 new GUID with the admin endpoint:
 
 ```
-curl -X POST http://localhost:5080/api/admin/players/merge-guid \
+curl -X POST https://et.aukko.net/api/admin/players/merge-guid \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{"sourceGuid":"OLD_GUID","targetGuid":"NEW_GUID"}'
@@ -129,7 +129,7 @@ Voice movement is requested in game chat; balancing never moves anyone in Discor
 Example:
 
 ```bash
-curl -X POST http://localhost:5080/api/players/register \
+curl -X POST https://et.aukko.net/api/players/register \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-ingest-token" \
   -d '{"etGuid": "0123456789abcdef0123456789abcdef", "token": "5f3e8a2b-1c4d-4e6f-9a7b-0c1d2e3f4a5b"}'

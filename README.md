@@ -49,7 +49,7 @@ Per side/team:
 
 The Lua side typically needs:
 
-- API base URL (example: `http://localhost:5080`)
+- API base URL (example: `https://et.aukko.net`)
 - API auth (example: bearer token / API key)
 - Server identifier (so multiple ET servers can post into one backend)
 
@@ -87,7 +87,7 @@ internal Compose network.
 - nerdctl: `nerdctl pull ghcr.io/cultti/pappaetstats:latest && nerdctl compose up -d`
 - Docker: `docker pull ghcr.io/cultti/pappaetstats:latest && docker compose up -d`
 
-3) Check the app at `http://localhost:5080`.
+3) Check the app at `https://et.aukko.net`.
 
 The app applies pending EF Core migrations automatically when it starts.
 

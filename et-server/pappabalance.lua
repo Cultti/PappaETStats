@@ -18,8 +18,8 @@ local modname = "PappaBalance"
 local version = "1.0-dev"
 
 -- Backendin endpointit
-local BALANCE_API_URL = "http://localhost:5080/api/skillratings/balance-teams"
-local VOICE_API_URL = "http://localhost:5080/api/voice/move"
+local BALANCE_API_URL = "https://et.aukko.net/api/skillratings/balance-teams"
+local VOICE_API_URL = "https://et.aukko.net/api/voice/move"
 local VOICE_COOLDOWN_SECONDS = 10
 
 -- Voice-HTTP-pyynnöt ajetaan taustalla POSIX-shellissa (Linux ET -serveri + curl).
@@ -821,6 +821,11 @@ function et_ClientCommand(clientNum, command)
     msg = trim(msg)
 
     local voiceCommand = msg:lower()
+    if voiceCommand == "!test" then
+        centerprint_all("^3BALANCE TEST^7\\n5on5/6on6\\nSigma-kerroin: 3  |  Pelaajia: 5 vs 5")
+        return 0
+    end
+
     if voiceCommand == "!voice" or voiceCommand == "!allutvittuun" then
         handle_voice_command(clientNum, voiceCommand == "!allutvittuun")
         -- Säilytä normaali chat-viesti, mukaan lukien lähettäjän oma chat-echo.

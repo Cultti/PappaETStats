@@ -20,7 +20,7 @@ local modname = "PappaRegister"
 local version = "1.0-dev"
 
 -- Backend endpoint
-local REGISTER_API_URL = "http://localhost:5080/api/players/register"
+local REGISTER_API_URL = "https://et.aukko.net/api/players/register"
 
 -- Token used by backend (same token as ingest endpoints).
 -- Keep empty to omit Authorization header.

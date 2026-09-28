@@ -12,9 +12,9 @@ local modname = "PappaStats"
 local version = "2.0-dev"
 
 -- Hardcoded endpoint for now (will be config later)
-local WEBHOOK_URL = "http://localhost:5080/api/matches"
+local WEBHOOK_URL = "https://et.aukko.net/api/matches"
 local WEBHOOK_MATCHID_URL = WEBHOOK_URL .. "/matchid"
-local WEBHOOK_DEMO_URL_TEMPLATE = "http://localhost:5080/api/matches/%s/demo"
+local WEBHOOK_DEMO_URL_TEMPLATE = "https://et.aukko.net/api/matches/%s/demo"
 
 -- Where to persist outgoing webhook payloads (relative to fs_homepath/fs_game).
 -- Ensure this directory exists on the server (e.g. <fs_homepath>/<fs_game>/stats/).
