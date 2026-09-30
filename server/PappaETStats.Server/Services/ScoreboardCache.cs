@@ -52,7 +52,8 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
             join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
             where p.Guid != null && p.Guid != ""
             select new PlayerRoundRow(
-                p.Guid!, p.Name, r.MatchId, r.RoundStartUnix, r.IngestedAtUtc,
+                p.Guid!, p.Name, r.MatchId, r.RoundStartMs, r.RoundEndMs,
+                r.RoundStartUnix, r.RoundEndUnix, r.IngestedAtUtc, p.TimePlayedPercent,
                 p.Xp, p.DamageGiven, p.DamageReceived, p.Gibs, p.SelfKills, p.TeamKills, p.TeamGibs,
                 p.MultiKills2, p.MultiKills3, p.MultiKills4, p.MultiKills5, p.MultiKills6)
         ).ToListAsync(cancellationToken);
@@ -97,7 +98,9 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
                 weapon?.Headshots ?? 0, weapon?.Revives ?? 0,
                 rows.Sum(x => (long)x.MultiKills2), rows.Sum(x => (long)x.MultiKills3),
                 rows.Sum(x => (long)x.MultiKills4), rows.Sum(x => (long)x.MultiKills5),
-                rows.Sum(x => (long)x.MultiKills6), weapon?.Hits ?? 0, weapon?.Atts ?? 0);
+                rows.Sum(x => (long)x.MultiKills6), weapon?.Hits ?? 0, weapon?.Atts ?? 0,
+                rows.Sum(x => SpawnWaitTimeCalculator.CalculateSeconds(
+                    x.RoundStartMs, x.RoundEndMs, x.RoundStartUnix, x.RoundEndUnix, x.TimePlayedPercent)));
         }).ToList();
 
         return
@@ -107,6 +110,7 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
             Board("Kills", totals, p => p.Kills),
             Board("Knife kills", totals, p => p.KnifeKills),
             Board("Deaths", totals, p => p.Deaths),
+            Board("Waiting for spawn", totals, p => p.WaitingForSpawnSeconds, FormatDuration),
             Board("K/D", totals, p => p.Deaths == 0 ? p.Kills : (double)p.Kills / p.Deaths, "0.00"),
             Board("Headshots", totals, p => p.Headshots),
             Board("Revives", totals, p => p.Revives),
@@ -128,20 +132,52 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
 
     private static Scoreboard Board(string title, List<PlayerTotals> players, Func<PlayerTotals, double> value,
         string format = "N0", string suffix = "")
+        => Board(title, players, value,
+            value => value.ToString(format, System.Globalization.CultureInfo.InvariantCulture) + suffix);
+
+    private static Scoreboard Board(string title, List<PlayerTotals> players, Func<PlayerTotals, double> value,
+        Func<double, string> format)
         => new(title, players.Where(p => p.Games >= 20 && p.LastPlayedUtc >= DateTime.UtcNow.AddMonths(-1))
             .Select(p => new ScoreRow(p.Guid, p.Name, value(p))).Where(row => row.Value > 0)
             .OrderByDescending(x => x.Value).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).Take(5).ToList(),
-            value => value.ToString(format, System.Globalization.CultureInfo.InvariantCulture) + suffix);
+            format);
 
-    private sealed record PlayerRoundRow(string Guid, string Name, Guid MatchId, long RoundStartUnix,
-        DateTime IngestedAtUtc, int Xp, int DamageGiven, int DamageReceived, int Gibs, int SelfKills,
+    private static string FormatDuration(double seconds)
+    {
+        var totalSeconds = Math.Max(0L, (long)Math.Round(seconds, MidpointRounding.AwayFromZero));
+        var hours = totalSeconds / 3600;
+        var minutes = totalSeconds % 3600 / 60;
+        var remainingSeconds = totalSeconds % 60;
+        return $"{hours}:{minutes:00}:{remainingSeconds:00}";
+    }
+
+    private sealed record PlayerRoundRow(string Guid, string Name, Guid MatchId, long RoundStartMs, long RoundEndMs,
+        long RoundStartUnix, long RoundEndUnix, DateTime IngestedAtUtc, double TimePlayedPercent,
+        int Xp, int DamageGiven, int DamageReceived, int Gibs, int SelfKills,
         int TeamKills, int TeamGibs, int MultiKills2, int MultiKills3, int MultiKills4, int MultiKills5, int MultiKills6);
     private sealed record WeaponRow(string Guid, int Weapon, int Hits, int Atts, int Kills, int Deaths, int Headshots);
     private sealed record WeaponTotals(long Kills, long KnifeKills, long Deaths, long Headshots, long Revives, long Hits, long Atts);
     private sealed record PlayerTotals(string Guid, string Name, int Games, DateTime LastPlayedUtc, int Xp,
         long DamageGiven, long DamageReceived, long Gibs, long SelfKills, long TeamKills, long TeamGibs,
         long Kills, long KnifeKills, long Deaths, long Headshots, long Revives, long MultiKills2,
-        long MultiKills3, long MultiKills4, long MultiKills5, long MultiKills6, long WeaponHits, long WeaponAtts);
+        long MultiKills3, long MultiKills4, long MultiKills5, long MultiKills6, long WeaponHits, long WeaponAtts,
+        double WaitingForSpawnSeconds);
+}
+
+public static class SpawnWaitTimeCalculator
+{
+    public static double CalculateSeconds(long roundStartMs, long roundEndMs, long roundStartUnix,
+        long roundEndUnix, double timePlayedPercent)
+    {
+        var durationMs = roundEndMs > roundStartMs
+            ? roundEndMs - roundStartMs
+            : roundEndUnix > roundStartUnix
+                ? (roundEndUnix - roundStartUnix) * 1000d
+                : 0d;
+
+        var aliveFraction = Math.Clamp(timePlayedPercent, 0d, 100d) / 100d;
+        return durationMs * (1d - aliveFraction) / 1000d;
+    }
 }
 
 public sealed record ScoreRow(string Guid, string Name, double Value);
