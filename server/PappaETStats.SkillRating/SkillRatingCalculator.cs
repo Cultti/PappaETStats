@@ -55,14 +55,15 @@ public sealed class SkillRatingCalculator
         var builder = ImmutableDictionary.CreateBuilder<Guid, SkillRating>();
 
         var exponent = _options.ContributionExponent;
-        if (double.IsNaN(exponent) || double.IsInfinity(exponent) || exponent <= 0.0)
+        if (_options.UseDamageContribution &&
+            (double.IsNaN(exponent) || double.IsInfinity(exponent) || exponent <= 0.0))
         {
             exponent = 1.0;
         }
 
-        // Pre-compute normalization terms.
-        // Winners use normalized w^exponent within the team.
-        // Losers use normalized (1 - w)^exponent within the losing team.
+        // Damage weighting is optional. With it disabled, a full-match player gets the
+        // entire update, as in ET: Legacy, rather than a share divided by team size.
+        // When enabled, preserve the existing normalized contribution weighting.
         double sumWinAxis = 0.0;
         double sumWinAllies = 0.0;
         double sumLoseAxis = 0.0;
@@ -70,33 +71,36 @@ public sealed class SkillRatingCalculator
         var axisCount = 0;
         var alliesCount = 0;
 
-        foreach (var p in players)
+        if (_options.UseDamageContribution)
         {
-            if (!weights.TryGetValue(p.PlayerId, out var contributionWeight))
+            foreach (var p in players)
             {
-                contributionWeight = 0.0;
-            }
+                if (!weights.TryGetValue(p.PlayerId, out var contributionWeight))
+                {
+                    contributionWeight = 0.0;
+                }
 
-            if (contributionWeight < 0.0) contributionWeight = 0.0;
-            if (contributionWeight > 1.0) contributionWeight = 1.0;
+                if (contributionWeight < 0.0) contributionWeight = 0.0;
+                if (contributionWeight > 1.0) contributionWeight = 1.0;
 
-            var winRaw = Math.Pow(contributionWeight, exponent);
+                var winRaw = Math.Pow(contributionWeight, exponent);
 
-            var loseBase = 1.0 - contributionWeight;
-            if (loseBase < 0.0) loseBase = 0.0;
-            var loseRaw = Math.Pow(loseBase, exponent);
+                var loseBase = 1.0 - contributionWeight;
+                if (loseBase < 0.0) loseBase = 0.0;
+                var loseRaw = Math.Pow(loseBase, exponent);
 
-            if (p.Team == Team.Axis)
-            {
-                sumWinAxis += winRaw;
-                sumLoseAxis += loseRaw;
-                axisCount++;
-            }
-            else if (p.Team == Team.Allies)
-            {
-                sumWinAllies += winRaw;
-                sumLoseAllies += loseRaw;
-                alliesCount++;
+                if (p.Team == Team.Axis)
+                {
+                    sumWinAxis += winRaw;
+                    sumLoseAxis += loseRaw;
+                    axisCount++;
+                }
+                else if (p.Team == Team.Allies)
+                {
+                    sumWinAllies += winRaw;
+                    sumLoseAllies += loseRaw;
+                    alliesCount++;
+                }
             }
         }
 
@@ -110,43 +114,45 @@ public sealed class SkillRatingCalculator
             var muFactor = sigmaSqPlusTauSq / c;
             var sigmaFactor = sigmaSqPlusTauSq / (c * c);
 
-            if (!weights.TryGetValue(p.PlayerId, out var contributionWeight))
-                contributionWeight = 0.0;
-
-            // Winner: higher contribution => larger increase.
-            // Loser: higher contribution => smaller decrease.
-            // For losers, we use normalized (1 - w)^exponent within the losing team to keep scaling balanced.
-            double contributionFactor;
-            if (isWinner)
+            var contributionFactor = 1.0;
+            if (_options.UseDamageContribution)
             {
-                var winRaw = Math.Pow(Math.Clamp(contributionWeight, 0.0, 1.0), exponent);
-                var denom = p.Team == Team.Axis ? sumWinAxis : sumWinAllies;
-                if (denom > 0.0)
+                if (!weights.TryGetValue(p.PlayerId, out var contributionWeight))
+                    contributionWeight = 0.0;
+
+                // Winner: higher contribution => larger increase.
+                // Loser: higher contribution => smaller decrease.
+                if (isWinner)
                 {
-                    contributionFactor = winRaw / denom;
+                    var winRaw = Math.Pow(Math.Clamp(contributionWeight, 0.0, 1.0), exponent);
+                    var denom = p.Team == Team.Axis ? sumWinAxis : sumWinAllies;
+                    if (denom > 0.0)
+                    {
+                        contributionFactor = winRaw / denom;
+                    }
+                    else
+                    {
+                        var teamCount = p.Team == Team.Axis ? axisCount : alliesCount;
+                        contributionFactor = teamCount > 0 ? 1.0 / teamCount : 0.0;
+                    }
                 }
                 else
                 {
-                    var teamCount = p.Team == Team.Axis ? axisCount : alliesCount;
-                    contributionFactor = teamCount > 0 ? 1.0 / teamCount : 0.0;
-                }
-            }
-            else
-            {
-                var loseBase = 1.0 - Math.Clamp(contributionWeight, 0.0, 1.0);
-                if (loseBase < 0.0) loseBase = 0.0;
-                var loseRaw = Math.Pow(loseBase, exponent);
+                    var loseBase = 1.0 - Math.Clamp(contributionWeight, 0.0, 1.0);
+                    if (loseBase < 0.0) loseBase = 0.0;
+                    var loseRaw = Math.Pow(loseBase, exponent);
 
-                var denom = p.Team == Team.Axis ? sumLoseAxis : sumLoseAllies;
-                if (denom > 0.0)
-                {
-                    contributionFactor = loseRaw / denom;
-                }
-                else
-                {
-                    // Edge case: single-player team => inverse sum is 0. Fall back to equal weighting.
-                    var teamCount = p.Team == Team.Axis ? axisCount : alliesCount;
-                    contributionFactor = teamCount > 0 ? 1.0 / teamCount : 0.0;
+                    var denom = p.Team == Team.Axis ? sumLoseAxis : sumLoseAllies;
+                    if (denom > 0.0)
+                    {
+                        contributionFactor = loseRaw / denom;
+                    }
+                    else
+                    {
+                        // Edge case: single-player team => inverse sum is 0. Fall back to equal weighting.
+                        var teamCount = p.Team == Team.Axis ? axisCount : alliesCount;
+                        contributionFactor = teamCount > 0 ? 1.0 / teamCount : 0.0;
+                    }
                 }
             }
             if (contributionFactor <= 0.0)
