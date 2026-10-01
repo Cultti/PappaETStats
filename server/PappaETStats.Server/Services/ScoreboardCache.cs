@@ -72,6 +72,7 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
             .ToDictionary(g => g.Key, g => new WeaponTotals(
                 g.Where(x => x.Weapon != 27).Sum(x => (long)x.Kills),
                 g.Where(x => x.Weapon == 0).Sum(x => (long)x.Kills),
+                g.Where(x => x.Weapon == 12).Sum(x => (long)x.Kills),
                 g.Where(x => x.Weapon != 27).Sum(x => (long)x.Deaths),
                 g.Where(x => x.Weapon != 27).Sum(x => (long)x.Headshots),
                 g.Where(x => x.Weapon == 27).Sum(x => (long)x.Hits),
@@ -94,7 +95,7 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
                 rows.Sum(x => (long)x.DamageGiven), rows.Sum(x => (long)x.DamageReceived),
                 rows.Sum(x => (long)x.Gibs), rows.Sum(x => (long)x.SelfKills),
                 rows.Sum(x => (long)x.TeamKills), rows.Sum(x => (long)x.TeamGibs),
-                weapon?.Kills ?? 0, weapon?.KnifeKills ?? 0, weapon?.Deaths ?? 0,
+                weapon?.Kills ?? 0, weapon?.KnifeKills ?? 0, weapon?.MortarKills ?? 0, weapon?.Deaths ?? 0,
                 weapon?.Headshots ?? 0, weapon?.Revives ?? 0,
                 rows.Sum(x => (long)x.MultiKills2), rows.Sum(x => (long)x.MultiKills3),
                 rows.Sum(x => (long)x.MultiKills4), rows.Sum(x => (long)x.MultiKills5),
@@ -109,6 +110,7 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
             Board("XP", totals, p => p.Xp),
             Board("Kills", totals, p => p.Kills),
             Board("Knife kills", totals, p => p.KnifeKills),
+            Board("Mortar kills", totals, p => p.MortarKills),
             Board("Deaths", totals, p => p.Deaths),
             Board("Waiting for spawn", totals, p => p.WaitingForSpawnSeconds, FormatDuration),
             Board("K/D", totals, p => p.Deaths == 0 ? p.Kills : (double)p.Kills / p.Deaths, "0.00"),
@@ -156,10 +158,11 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
         int Xp, int DamageGiven, int DamageReceived, int Gibs, int SelfKills,
         int TeamKills, int TeamGibs, int MultiKills2, int MultiKills3, int MultiKills4, int MultiKills5, int MultiKills6);
     private sealed record WeaponRow(string Guid, int Weapon, int Hits, int Atts, int Kills, int Deaths, int Headshots);
-    private sealed record WeaponTotals(long Kills, long KnifeKills, long Deaths, long Headshots, long Revives, long Hits, long Atts);
+    private sealed record WeaponTotals(long Kills, long KnifeKills, long MortarKills, long Deaths, long Headshots,
+        long Revives, long Hits, long Atts);
     private sealed record PlayerTotals(string Guid, string Name, int Games, DateTime LastPlayedUtc, int Xp,
         long DamageGiven, long DamageReceived, long Gibs, long SelfKills, long TeamKills, long TeamGibs,
-        long Kills, long KnifeKills, long Deaths, long Headshots, long Revives, long MultiKills2,
+        long Kills, long KnifeKills, long MortarKills, long Deaths, long Headshots, long Revives, long MultiKills2,
         long MultiKills3, long MultiKills4, long MultiKills5, long MultiKills6, long WeaponHits, long WeaponAtts,
         double WaitingForSpawnSeconds);
 }
