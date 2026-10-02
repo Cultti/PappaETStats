@@ -69,6 +69,87 @@ public sealed class VoiceEndpointsTests
     }
 
     [Theory]
+    [InlineData(3, 15)]
+    [InlineData(4, 12)]
+    [InlineData(5, 15)]
+    [InlineData(6, 18)]
+    [InlineData(3, 72)]
+    public async Task BalanceGroupsUsesOverallRatingsAndReturnsEveryPlayer(int teamSize, int count)
+    {
+        await using var host = await TestHost.Start();
+        var guids = Enumerable.Range(1, count).Select(i => i.ToString("X32")).ToArray();
+        await using (var db = new StatsDbContext(new DbContextOptionsBuilder<StatsDbContext>().UseSqlite(host.Connection).Options))
+        {
+            db.Players.AddRange(guids.Select((guid, i) => new Player
+            {
+                Guid = guid, Mu = i + 10, Sigma = 2,
+                MuSmall = 1000 - i, SigmaSmall = 9, MuLarge = 2000 - i, SigmaLarge = 10,
+            }));
+            await db.SaveChangesAsync();
+        }
+        var response = await host.Client.PostAsJsonAsync("/api/skillratings/balance-groups",
+            new { guids = guids.Select(g => g.ToLowerInvariant()), teamSize });
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var teams = json.GetProperty("teams").EnumerateArray().ToArray();
+        Assert.Equal(count / teamSize, teams.Length);
+        var returned = teams.SelectMany(t => t.GetProperty("players").EnumerateArray()).ToArray();
+        Assert.Equal(guids.Order(), returned.Select(p => p.GetProperty("guid").GetString()!).Order());
+        foreach (var team in teams) Assert.Equal(teamSize, team.GetProperty("players").GetArrayLength());
+        foreach (var player in returned)
+        {
+            var index = Array.IndexOf(guids, player.GetProperty("guid").GetString());
+            Assert.Equal(index + 10, player.GetProperty("mu").GetDouble());
+            Assert.Equal(index + 6, player.GetProperty("conservative").GetDouble());
+        }
+        var sums = teams.Select(t => t.GetProperty("sumMu").GetDouble()).ToArray();
+        Assert.True(sums.Max() - sums.Min() <= 1);
+        Assert.Equal(0, host.Bot.Calls);
+    }
+
+    [Theory]
+    [InlineData(2, 6)]
+    [InlineData(7, 14)]
+    [InlineData(3, 7)]
+    [InlineData(3, 0)]
+    public async Task BalanceGroupsRejectsInvalidSizes(int teamSize, int count)
+    {
+        await using var host = await TestHost.Start();
+        var response = await host.Client.PostAsJsonAsync("/api/skillratings/balance-groups",
+            new { guids = Enumerable.Range(1, count).Select(i => i.ToString("X32")), teamSize });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("{\"guids\":[null,\"bad\",\"bad\"],\"teamSize\":3}")]
+    [InlineData("{\"guids\":[\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\"],\"teamSize\":3}")]
+    [InlineData("{\"guids\":[\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\",\"CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC\"],\"teamSize\":3,\"sigmaMultiplier\":0}")]
+    public async Task BalanceGroupsRejectsInvalidPlayersAndMultiplier(string body)
+    {
+        await using var host = await TestHost.Start();
+        var response = await host.Client.PostAsync("/api/skillratings/balance-groups",
+            new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task BalanceGroupsRequiresAuthenticationAndUsesDefaultsForUnknownPlayers()
+    {
+        await using var host = await TestHost.Start();
+        var body = new { guids = new[] { AxisGuid, AlliesGuid, UnknownGuid }, teamSize = 3 };
+        var response = await host.Client.PostAsJsonAsync("/api/skillratings/balance-groups", body);
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var unknown = json.GetProperty("teams")[0].GetProperty("players").EnumerateArray()
+            .Single(p => p.GetProperty("guid").GetString() == UnknownGuid);
+        Assert.Equal(25, unknown.GetProperty("mu").GetDouble());
+        Assert.Equal(12.5, unknown.GetProperty("sigma").GetDouble());
+        host.Client.DefaultRequestHeaders.Remove("Authorization");
+        response = await host.Client.PostAsJsonAsync("/api/skillratings/balance-groups", body);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Theory]
     [InlineData("", "secret")]
     [InlineData("Bearer wrong", "secret")]
     [InlineData("Bearer secret", "")]

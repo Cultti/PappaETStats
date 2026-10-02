@@ -7,7 +7,7 @@ using PappaETStats.Server.Options;
 
 namespace PappaETStats.Server.Api;
 
-public static class TeamBalanceEndpoints
+public static partial class TeamBalanceEndpoints
 {
     public static IEndpointRouteBuilder MapTeamBalanceEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -17,6 +17,13 @@ public static class TeamBalanceEndpoints
         group.MapPost("/skillratings/balance-teams", BalanceTeamsAsync)
             .WithName("BalanceTeams")
             .Accepts<BalanceTeamsRequest>("application/json")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        group.MapPost("/skillratings/balance-groups", BalanceGroupsAsync)
+            .WithName("BalanceGroups")
+            .Accepts<BalanceGroupsRequest>("application/json")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized);

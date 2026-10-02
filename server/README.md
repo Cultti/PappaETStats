@@ -61,6 +61,30 @@ The Lua script in [et-server/pappastats.lua](../et-server/pappastats.lua) POSTs 
 
 ### Team balancing
 
+`POST /api/skillratings/balance-groups` divides a player pool into any number of
+equal-sized teams using **overall** ratings, regardless of team size. Use the same
+`Authorization: Bearer <token>` header as ingest.
+
+```json
+{
+  "guids": ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"],
+  "teamSize": 3
+}
+```
+
+`teamSize` must be 3, 4, 5, or 6. Supply a positive multiple of that many GUIDs,
+without duplicates; 15 GUIDs with `teamSize: 3` returns five teams. Invalid input
+returns HTTP 400. Unknown players use the configured initial rating.
+`sigmaMultiplier` is optional (default `2.0`) and controls the returned conservative
+rating (`mu - sigmaMultiplier * sigma`). It does not change team assignment.
+
+The response contains `teamSize`, `sigmaMultiplier`, and a `teams` array. Each team
+has `players` (each with `guid`, `mu`, `sigma`, `conservative`), `sumMu`, and
+`sumConservative`. Balancing minimizes differences in total overall `mu` using
+multiple starting partitions and improving player swaps. Results are deterministic
+for the same player ratings and pool, but are best effort rather than guaranteed
+globally optimal. A pool of exactly `teamSize` players returns one team.
+
 - `POST /api/skillratings/balance-teams`
   - Headers:
     - `Authorization: Bearer <token>` (same token as ingest)
