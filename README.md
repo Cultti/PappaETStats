@@ -55,6 +55,29 @@ The Lua side typically needs:
 
 This repo intentionally keeps these as *config values* (cvars or a simple config file) so you can run multiple servers.
 
+### Server identity for round pairing
+
+Each game server should have a stable, unique ID, especially when containers or
+NAT cause several servers to report the same public IP and internal `net_port`.
+Set this cvar before loading `pappastats.lua`:
+
+```cfg
+// Server 1
+set pappa_stats_server_id "pappacup-1"
+// Use "pappacup-2" in server 2's configuration instead.
+```
+
+The script sends this ID in both match-ID requests and round uploads. If unset,
+it uses `sv_hostname`; those names must then be unique and remain unchanged
+between the two rounds. Configure explicit IDs if servers share a display name
+or may be renamed. Keep the ID unchanged when restarting or upgrading a server.
+
+Deploy the updated Lua script on every game server before updating the API.
+The API applies the `AddMatchServerId` database migration at startup. Existing
+matches remain intact and can be paired by their original hostname during the
+transition. Round 2 ID requests without either a server ID or hostname return
+HTTP 400; uploads reusing a match ID from another server or map return HTTP 409.
+
 ### Shared API key
 
 The API and all three ET: Legacy Lua modules use the same bearer token. Generate

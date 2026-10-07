@@ -156,7 +156,8 @@ public static class IngestEndpoints
             .Accepts<MatchIngestDto>("application/json")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
-            .Produces(StatusCodes.Status401Unauthorized);
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status409Conflict);
 
         return endpoints;
     }
@@ -185,6 +186,8 @@ public static class IngestEndpoints
         IOptions<IngestOptions> ingestOptions,
         string? serverIp,
         string? serverPort,
+        string? serverId,
+        string? servername,
         string? mapname,
         int? round,
         CancellationToken cancellationToken)
@@ -223,31 +226,44 @@ public static class IngestEndpoints
             return Results.Ok(new { matchId = Guid.NewGuid().ToString("N") });
         }
 
+        serverId = string.IsNullOrWhiteSpace(serverId) ? null : serverId.Trim();
+        if (serverId is null && string.IsNullOrWhiteSpace(servername))
+        {
+            return Results.BadRequest(new { error = "serverId or servername is required to pair round 2" });
+        }
+
+        if (serverId?.Length > 256 || servername?.Length > 256)
+        {
+            return Results.BadRequest(new { error = "serverId and servername must be at most 256 characters" });
+        }
+
         // Prefer reusing an "open" match (round 1 exists, round 2 missing) for the same server+map.
         // This allows the Lua script to reliably pair round 2 with the match created for round 1.
         var cutoff = DateTime.UtcNow.AddHours(-6);
 
-        var candidates = await db.MatchRounds
-            .Where(r => r.IngestedAtUtc >= cutoff && r.Match.ServerIp == serverIp && r.Match.ServerPort == serverPort && r.Match.MapName == mapname)
-            .OrderByDescending(r => r.IngestedAtUtc)
-            .Take(200)
-            .Select(r => new { r.Match.ExternalMatchId, r.RoundNumber, r.IngestedAtUtc })
-            .ToListAsync(cancellationToken);
+        var candidates = db.Matches
+            .Where(m => m.ServerIp == serverIp && m.ServerPort == serverPort && m.MapName == mapname)
+            .Where(m => m.Rounds.Any(r => r.RoundNumber == 1 && r.IngestedAtUtc >= cutoff)
+                && !m.Rounds.Any(r => r.RoundNumber == 2));
 
-        var openMatchId = candidates
-            .GroupBy(c => c.ExternalMatchId)
-            .Select(g => new
-            {
-                ExternalMatchId = g.Key,
-                Latest = g.Max(x => x.IngestedAtUtc),
-                HasRound1 = g.Any(x => x.RoundNumber == 1),
-                HasRound2 = g.Any(x => x.RoundNumber == 2)
-            })
-            // Round 2 should match a match that has round 1 ingested but not round 2 yet.
-            .Where(x => x.HasRound1 && !x.HasRound2)
-            .OrderByDescending(x => x.Latest)
-            .Select(x => x.ExternalMatchId)
-            .FirstOrDefault();
+        if (serverId is not null)
+        {
+            // Older matches have no ServerId. The hostname allows a safe transition
+            // when the Lua module is upgraded between rounds.
+            candidates = candidates.Where(m => m.ServerId == serverId
+                || (m.ServerId == null && servername != null && m.ServerName == servername));
+        }
+        else
+        {
+            candidates = candidates.Where(m => m.ServerId == null && m.ServerName == servername);
+        }
+
+        var openMatchId = await candidates
+            // A stored identity takes precedence over legacy hostname matching.
+            .OrderByDescending(m => m.ServerId != null)
+            .ThenByDescending(m => m.Rounds.Where(r => r.RoundNumber == 1).Max(r => r.IngestedAtUtc))
+            .Select(m => m.ExternalMatchId)
+            .FirstOrDefaultAsync(cancellationToken);
 
         var matchId = openMatchId ?? Guid.NewGuid().ToString("N");
         return Results.Ok(new { matchId });
@@ -303,6 +319,28 @@ public static class IngestEndpoints
         var existingMatch = await db.Matches
             .FirstOrDefaultAsync(m => m.ExternalMatchId == dto.MatchId, cancellationToken);
 
+        var serverId = string.IsNullOrWhiteSpace(dto.ServerId) ? null : dto.ServerId.Trim();
+        if (serverId?.Length > 256)
+        {
+            return Results.BadRequest(new { error = "serverId must be at most 256 characters" });
+        }
+
+        if (existingMatch is not null)
+        {
+            // Validate before updating metadata or deleting a previously ingested round.
+            // A mistaken match ID must never overwrite another server's data.
+            var sameServer = existingMatch.ServerId is not null
+                ? string.Equals(existingMatch.ServerId, serverId, StringComparison.Ordinal)
+                : string.Equals(existingMatch.ServerName, dto.ServerName ?? string.Empty, StringComparison.Ordinal);
+            if (!sameServer
+                || !string.Equals(existingMatch.MapName, dto.MapName, StringComparison.Ordinal)
+                || !string.Equals(existingMatch.ServerIp, dto.ServerIp ?? string.Empty, StringComparison.Ordinal)
+                || !string.Equals(existingMatch.ServerPort, dto.ServerPort ?? string.Empty, StringComparison.Ordinal))
+            {
+                return Results.Conflict(new { error = "matchID belongs to a different server or map" });
+            }
+        }
+
         Match match;
         var isNewMatch = existingMatch is null;
         if (existingMatch is null)
@@ -314,6 +352,7 @@ public static class IngestEndpoints
                 MapName = dto.MapName,
                 Config = dto.Config ?? string.Empty,
                 ServerName = dto.ServerName ?? string.Empty,
+                ServerId = serverId,
                 ServerIp = dto.ServerIp ?? string.Empty,
                 ServerPort = dto.ServerPort ?? string.Empty,
             };
@@ -325,6 +364,7 @@ public static class IngestEndpoints
             match.MapName = dto.MapName;
             match.Config = dto.Config ?? string.Empty;
             match.ServerName = dto.ServerName ?? string.Empty;
+            match.ServerId = serverId;
             match.ServerIp = dto.ServerIp ?? string.Empty;
             match.ServerPort = dto.ServerPort ?? string.Empty;
         }

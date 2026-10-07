@@ -59,6 +59,27 @@ The Lua script in [et-server/pappastats.lua](../et-server/pappastats.lua) POSTs 
   - Body:
     - One JSON object (example below)
 
+### Round pairing
+
+`GET /api/matches/matchid` uses the ingest bearer token. Send `serverIp`,
+`serverPort`, `mapname`, and `round` (1 or 2). For round 2, also send `serverId`
+or `servername`. `serverId` is a stable, unique identifier of at most 256
+characters. The Lua module uses `pappa_stats_server_id`, falling back to
+`sv_hostname` when the setting is absent.
+
+Round 1 receives a fresh ID. Round 2 reuses the latest open match from the same
+server and map, with a round 1 ingested in the last six hours and no round 2.
+Send the same `serverId` in the `POST /api/matches` body. For existing matches
+without an ID, the API uses `servername` to distinguish servers and adopts the
+ID on the next upload. An explicit stored ID must not be omitted or changed.
+
+The API rejects round 2 lookups without an identity with HTTP 400. It rejects
+uploads whose match ID belongs to a different server, map, IP or port with
+HTTP 409 before changing any stored metadata or rounds. Player substitutions
+are allowed. A server ID remains valid when the display name changes.
+
+See the root README for deployment order and per-server configuration.
+
 ### Team balancing
 
 `POST /api/skillratings/balance-groups` divides a player pool into any number of
@@ -75,12 +96,12 @@ equal-sized teams using **overall** ratings, regardless of team size. Use the sa
 `teamSize` must be 3, 4, 5, or 6. Supply a positive multiple of that many GUIDs,
 without duplicates; 15 GUIDs with `teamSize: 3` returns five teams. Invalid input
 returns HTTP 400. Unknown players use the configured initial rating.
-`sigmaMultiplier` is optional (default `2.0`) and controls the returned conservative
-rating (`mu - sigmaMultiplier * sigma`). It does not change team assignment.
+`sigmaMultiplier` is optional (default `2.0`) and controls the conservative
+rating (`mu - sigmaMultiplier * sigma`) used for team assignment.
 
 The response contains `teamSize`, `sigmaMultiplier`, and a `teams` array. Each team
 has `players` (each with `guid`, `mu`, `sigma`, `conservative`), `sumMu`, and
-`sumConservative`. Balancing minimizes differences in total overall `mu` using
+`sumConservative`. Balancing minimizes differences in total overall conservative rating using
 multiple starting partitions and improving player swaps. Results are deterministic
 for the same player ratings and pool, but are best effort rather than guaranteed
 globally optimal. A pool of exactly `teamSize` players returns one team.

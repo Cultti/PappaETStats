@@ -46,6 +46,9 @@ public sealed class MatchIngestDto
     [JsonPropertyName("serverIp")]
     public string? ServerIp { get; init; }
 
+    [JsonPropertyName("serverId")]
+    public string? ServerId { get; init; }
+
     [JsonPropertyName("matchID")]
     public string? MatchId { get; init; }
 

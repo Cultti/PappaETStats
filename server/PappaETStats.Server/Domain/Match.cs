@@ -18,6 +18,9 @@ public sealed class Match
     [MaxLength(256)]
     public required string ServerName { get; set; }
 
+    [MaxLength(256)]
+    public string? ServerId { get; set; }
+
     [MaxLength(64)]
     public required string ServerIp { get; set; }
 

@@ -102,9 +102,42 @@ public sealed class VoiceEndpointsTests
             Assert.Equal(index + 10, player.GetProperty("mu").GetDouble());
             Assert.Equal(index + 6, player.GetProperty("conservative").GetDouble());
         }
-        var sums = teams.Select(t => t.GetProperty("sumMu").GetDouble()).ToArray();
+        var sums = teams.Select(t => t.GetProperty("sumConservative").GetDouble()).ToArray();
         Assert.True(sums.Max() - sums.Min() <= 1);
         Assert.Equal(0, host.Bot.Calls);
+    }
+
+    [Theory]
+    [InlineData(2.0)]
+    [InlineData(1.0)]
+    public async Task BalanceGroupsBalancesConservativeRatingsWithDifferentUncertainty(double multiplier)
+    {
+        await using var host = await TestHost.Start();
+        var guids = Enumerable.Range(1, 6).Select(i => i.ToString("X32")).ToArray();
+        // Equal Mu leaves a Mu-only balancer unable to distinguish these players.
+        // At multiplier 2 the conservative ratings are 0, -2, -4, -6, -8, -12;
+        // an exact equal split exists: (0, -4, -12) and (-2, -6, -8).
+        var sigmas = new double[] { 10, 11, 12, 13, 14, 16 };
+        await using (var db = new StatsDbContext(new DbContextOptionsBuilder<StatsDbContext>().UseSqlite(host.Connection).Options))
+        {
+            db.Players.AddRange(guids.Select((guid, i) => new Player
+            {
+                Guid = guid, Mu = 20, Sigma = sigmas[i],
+                MuSmall = 1000, SigmaSmall = 1, MuLarge = 2000, SigmaLarge = 1,
+            }));
+            await db.SaveChangesAsync();
+        }
+        var response = await host.Client.PostAsJsonAsync("/api/skillratings/balance-groups",
+            new { guids, teamSize = 3, sigmaMultiplier = multiplier });
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var teams = json.GetProperty("teams").EnumerateArray().ToArray();
+        Assert.Equal(2, teams.Length);
+        Assert.Equal(teams[0].GetProperty("sumConservative").GetDouble(),
+            teams[1].GetProperty("sumConservative").GetDouble(), 8);
+        foreach (var player in teams.SelectMany(t => t.GetProperty("players").EnumerateArray()))
+            Assert.Equal(20 - multiplier * player.GetProperty("sigma").GetDouble(),
+                player.GetProperty("conservative").GetDouble());
     }
 
     [Theory]

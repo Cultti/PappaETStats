@@ -1,0 +1,29 @@
+﻿using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace PappaETStats.Server.Migrations
+{
+    /// <inheritdoc />
+    public partial class AddMatchServerId : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.AddColumn<string>(
+                name: "ServerId",
+                table: "Matches",
+                type: "TEXT",
+                maxLength: 256,
+                nullable: true);
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropColumn(
+                name: "ServerId",
+                table: "Matches");
+        }
+    }
+}

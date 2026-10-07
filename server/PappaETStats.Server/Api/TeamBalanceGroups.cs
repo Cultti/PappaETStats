@@ -51,7 +51,7 @@ public static partial class TeamBalanceEndpoints
             var mu = existing.TryGetValue(guid, out var player) ? player.Mu : defaults.Mu;
             var sigma = player?.Sigma ?? defaults.Sigma;
             return new BalancedPlayer(guid, mu, sigma, mu - multiplier * sigma);
-        }).OrderByDescending(p => p.Mu).ThenBy(p => p.Guid, StringComparer.Ordinal).ToArray();
+        }).OrderByDescending(p => p.Conservative).ThenBy(p => p.Guid, StringComparer.Ordinal).ToArray();
 
         var teams = DivideGroups(players, body.TeamSize, cancellationToken);
         return Results.Ok(new
@@ -64,8 +64,8 @@ public static partial class TeamBalanceEndpoints
         });
     }
 
-    // Minimize variance in total overall Mu: equal totals give equal pairwise win
-    // probabilities. Multiple starts escape some local minima without an exponential
+    // Minimize variance in total overall conservative rating.
+    // Multiple starts escape some local minima without an exponential
     // search. The result is a best-effort partition, not a guaranteed global optimum.
     private static List<BalancedPlayer>[] DivideGroups(
         BalancedPlayer[] players, int teamSize, CancellationToken cancellationToken)
@@ -86,7 +86,7 @@ public static partial class TeamBalanceEndpoints
                 var target = Enumerable.Range(0, teamCount).Where(t => teams[t].Count < teamSize)
                     .OrderBy(t => sums[t]).ThenBy(t => teams[t].Count).First();
                 teams[target].Add(player);
-                sums[target] += player.Mu;
+                sums[target] += player.Conservative;
             }
 
             // Every accepted swap strictly reduces the objective and keeps sizes fixed.
@@ -100,7 +100,7 @@ public static partial class TeamBalanceEndpoints
                 for (var i = 0; i < teamSize; i++)
                 for (var j = 0; j < teamSize; j++)
                 {
-                    var delta = teams[b][j].Mu - teams[a][i].Mu;
+                    var delta = teams[b][j].Conservative - teams[a][i].Conservative;
                     var gain = -2 * delta * (sums[a] - sums[b] + delta);
                     if (gain > improvement)
                     {
@@ -110,7 +110,7 @@ public static partial class TeamBalanceEndpoints
                 }
                 if (swap.a < 0) break;
                 var (ta, tb, pi, pj) = swap;
-                var change = teams[tb][pj].Mu - teams[ta][pi].Mu;
+                var change = teams[tb][pj].Conservative - teams[ta][pi].Conservative;
                 (teams[ta][pi], teams[tb][pj]) = (teams[tb][pj], teams[ta][pi]);
                 sums[ta] += change;
                 sums[tb] -= change;

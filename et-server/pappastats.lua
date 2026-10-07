@@ -498,6 +498,26 @@ local function url_encode(s)
     return s
 end
 
+-- Configure a stable, unique pappa_stats_server_id for each game server.
+-- Hostname is a backward-compatible default for existing installations.
+local function getServerId()
+    local configured = tostring(trap_Cvar_Get("pappa_stats_server_id") or ""):match("^%s*(.-)%s*$")
+    if configured ~= "" then
+        return configured
+    end
+    return tostring(trap_Cvar_Get("sv_hostname") or "")
+end
+
+local function fallbackMatchId()
+    -- Unix time alone collides when two servers finish a round in the same second.
+    local hash = 0
+    local serverId = getServerId()
+    for i = 1, #serverId do
+        hash = (hash * 31 + serverId:byte(i)) % 4294967296
+    end
+    return string.format("fallback-%08x-%d-%d", hash, os.time(), trap_Milliseconds())
+end
+
 local function fetchMatchIDFromAPI(authToken, server_ip, server_port, mapname, round)
     if not authToken or authToken == "" then
         return nil, "No auth token"
@@ -509,12 +529,14 @@ local function fetchMatchIDFromAPI(authToken, server_ip, server_port, mapname, r
     end
 
     local url = string.format(
-        '%s?serverIp=%s&serverPort=%s&mapname=%s&round=%d',
+        '%s?serverIp=%s&serverPort=%s&mapname=%s&round=%d&serverId=%s&servername=%s',
         WEBHOOK_MATCHID_URL,
         url_encode(server_ip),
         url_encode(server_port),
         url_encode(mapname),
-        resolvedRound
+        resolvedRound,
+        url_encode(getServerId()),
+        url_encode(trap_Cvar_Get("sv_hostname"))
     )
 
     local curl_cmd = "curl -s -H " .. shell_quote("Authorization: Bearer " .. authToken)
@@ -968,6 +990,7 @@ local function gather_match_stats(matchID)
         matchID = resolved_matchID,
         serverIp = server_ip,
         serverPort = server_port,
+        serverId = getServerId(),
         roundStart = round_start_time,
         roundEnd = round_end_time,
         roundStartUnix = round_start_unix,
@@ -994,7 +1017,7 @@ function SendStats(authToken)
 
     local resolvedRound = (safe_number(trap_Cvar_Get("g_currentRound")) == 0) and 2 or 1
 
-    -- Solely trust backend match id generator. Always fetch matchID based on server+map+round.
+    -- Reuse our current ID or recover it using the server identity, map and round.
     if not current_match_id or current_match_id == "" then
         local server_ip, server_port = getServerIpPort()
         local fetched, err = fetchMatchIDFromAPI(authToken, server_ip, server_port, mapname, resolvedRound)
@@ -1003,9 +1026,9 @@ function SendStats(authToken)
             log("Using matchID from API: " .. current_match_id)
         else
             -- Backend contract: for round=2 it will still create a new one if no open match exists.
-            -- If backend is unreachable, fall back to unix time to avoid losing data.
-            current_match_id = tostring(os.time())
-            log("Failed to fetch matchID from API, falling back to unix time: " .. current_match_id .. " (" .. tostring(err) .. ")")
+            -- If backend is unreachable, retain data with a server-scoped fallback ID.
+            current_match_id = fallbackMatchId()
+            log("Failed to fetch matchID from API, using fallback ID: " .. current_match_id .. " (" .. tostring(err) .. ")")
         end
     end
 
