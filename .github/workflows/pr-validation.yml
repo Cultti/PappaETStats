@@ -50,11 +50,12 @@ jobs:
         if: steps.tests.outputs.found == 'true'
         run: dotnet test PappaETStats.sln -c Release --no-build --verbosity normal
 
-      - name: Test ET voice commands
+      - name: Test ET Lua scripts
         run: |
           sudo apt-get update
-          sudo apt-get install -y lua5.1
+          sudo apt-get install -y lua5.1 lua5.4
           lua5.1 et-server/tests/pappabalance_test.lua
+          lua5.4 et-server/tests/pappastats_test.lua
 
   docker-smoke-test:
     name: Docker build & smoke test

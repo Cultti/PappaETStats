@@ -21,6 +21,71 @@ namespace PappaETStats.Server.Tests;
 
 public sealed class IngestEndpointsTests
 {
+    [Fact]
+    public async Task LastReadyUpsAreAuthenticatedNormalizedAndIdempotent()
+    {
+        await using var host = await TestHost.Start();
+        var dto = new LastReadyUpDto("countdown-1", new string('a', 32), 100, 110, "cup-1", "supply", 1);
+        host.Client.DefaultRequestHeaders.Remove("Authorization");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await host.Client.PostAsJsonAsync("/api/ready-ups", dto)).StatusCode);
+        host.Client.DefaultRequestHeaders.Add("Authorization", "Bearer secret");
+        Assert.Equal(HttpStatusCode.OK, (await host.Client.PostAsJsonAsync("/api/ready-ups", dto)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await host.Client.PostAsJsonAsync("/api/ready-ups", dto)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await host.Client.PostAsJsonAsync("/api/ready-ups",
+            dto with { PlayerGuid = new string('B', 32) })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await host.Client.PostAsJsonAsync("/api/ready-ups",
+            dto with { EventId = "countdown-2", Round = 2 })).StatusCode);
+        await using var db = host.CreateDb();
+        var events = await db.LastReadyUps.OrderBy(r => r.EventId).ToListAsync();
+        Assert.Equal(2, events.Count);
+        Assert.All(events, r => Assert.Equal(new string('A', 32), r.PlayerGuid));
+        Assert.Equal(100, events[0].ReadyAtUnix);
+        Assert.Equal(110, events[0].CountdownAtUnix);
+        Assert.Equal("cup-1", events[0].ServerId);
+        Assert.Equal("supply", events[0].MapName);
+    }
+
+    [Fact]
+    public async Task InvalidLastReadyUpsAreRejected()
+    {
+        await using var host = await TestHost.Start();
+        var valid = new LastReadyUpDto("event", new string('A', 32), 100, 110, "cup-1", "supply", 1);
+        LastReadyUpDto[] invalid =
+        [
+            valid with { PlayerGuid = "" }, valid with { PlayerGuid = new string('Z', 32) },
+            valid with { PlayerGuid = null! }, valid with { EventId = "" },
+            valid with { EventId = new string('X', 65) }, valid with { ServerId = " " },
+            valid with { MapName = "" }, valid with { Round = 0 }, valid with { Round = 3 },
+            valid with { ReadyAtUnix = 0 }, valid with { CountdownAtUnix = 99 },
+        ];
+        foreach (var dto in invalid)
+            Assert.Equal(HttpStatusCode.BadRequest, (await host.Client.PostAsJsonAsync("/api/ready-ups", dto)).StatusCode);
+        await using var db = host.CreateDb();
+        Assert.Empty(await db.LastReadyUps.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ReadyUpLeaderboardCountsGuidsAndInvalidatesCachedResults()
+    {
+        await using var host = await TestHost.Start();
+        // Existing scoreboard eligibility: at least 20 matches and recent activity.
+        for (var i = 0; i < 20; i++) await host.Post(Payload("match-" + i, "cup-1", "Cup", 1));
+        // Use the endpoint's singleton cache to exercise invalidation.
+        var cache = host.ScoreboardCache;
+        Assert.Empty((await cache.GetAsync()).Single(b => b.Title == "Their body wasn't ready").Rows);
+        var guid = new string('A', 31) + "0";
+        var dto = new LastReadyUpDto("ready-1", guid.ToLowerInvariant(), 100, 110, "cup-1", "supply", 1);
+        (await host.Client.PostAsJsonAsync("/api/ready-ups", dto)).EnsureSuccessStatusCode();
+        (await host.Client.PostAsJsonAsync("/api/ready-ups", dto)).EnsureSuccessStatusCode();
+        (await host.Client.PostAsJsonAsync("/api/ready-ups", dto with { EventId = "ready-2" })).EnsureSuccessStatusCode();
+        var board = (await cache.GetAsync()).Single(b => b.Title == "Their body wasn't ready");
+        var row = Assert.Single(board.Rows);
+        Assert.Equal(guid, row.Guid);
+        Assert.Equal("Player 0", row.Name);
+        Assert.Equal(2, row.Value);
+        Assert.Equal("2", board.Format(row.Value));
+    }
+
     [Theory]
     [InlineData("Cup #1", "Cup #2")]
     [InlineData("Same hostname", "Same hostname")]
@@ -188,6 +253,7 @@ public sealed class IngestEndpointsTests
     private sealed class TestHost(WebApplication app, SqliteConnection connection, HttpClient client) : IAsyncDisposable
     {
         public HttpClient Client => client;
+        public ScoreboardCache ScoreboardCache => app.Services.GetRequiredService<ScoreboardCache>();
         public StatsDbContext CreateDb() => new(new DbContextOptionsBuilder<StatsDbContext>().UseSqlite(connection).Options);
 
         public static async Task<TestHost> Start()

@@ -198,6 +198,29 @@ Responses (all bodies are JSON; error bodies contain an `error` message suitable
 | `409 Conflict` | `{ "error": "This player is already linked to a different Discord account." }` | ET GUID taken by another Discord user. |
 | `409 Conflict` | `{ "error": "Your Discord account is already linked to another player." }` | Discord user already linked to a different ET GUID. |
 
+### Last ready-up tracking
+
+`pappastats.lua` observes `ready` and `readytoggle` during warmup, confirms the
+engine's ready state, and posts the last currently ready Axis/Allies player's
+GUID when the server enters warmup countdown (either stopwatch round).
+Unready players, spectators, disconnected clients, and rejected commands are
+excluded. A cancelled countdown resets the tracking for the next warmup.
+Countdowns without an observed player ready command do not produce an event.
+
+`POST /api/ready-ups` requires the shared ingest bearer token. Its JSON fields
+are `eventId`, `playerGuid` (32 hexadecimal characters), `readyAtUnix`,
+`countdownAtUnix`, `serverId`, `mapName`, and `round` (1 or 2). GUIDs are saved
+in uppercase. Event IDs make retries idempotent; conflicting reuse returns 409.
+Events are stored independently of completed match uploads, so a countdown
+counts even if the round is subsequently abandoned. Lua uses the existing
+background curl helper and its bounded retries.
+
+The **Their body wasn't ready** scoreboard ranks the top five players by total
+last ready-ups, with the same 20-match and recent-activity eligibility as the
+other scoreboards. Historical ready-ups cannot be reconstructed from old match
+stats. Deploy the API and updated Lua together; the `AddLastReadyUps` migration
+is applied on backend startup.
+
 ### Move-teams webhook (bot integration)
 
 `POST /api/skillratings/balance-teams` only balances in-game teams. After applying the teams,

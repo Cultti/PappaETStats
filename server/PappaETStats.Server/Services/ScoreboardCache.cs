@@ -79,6 +79,11 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
                 g.Where(x => x.Weapon != 27).Sum(x => (long)x.Hits),
                 g.Where(x => x.Weapon != 27).Sum(x => (long)x.Atts)), StringComparer.OrdinalIgnoreCase);
 
+        var readyUpCounts = await db.LastReadyUps.AsNoTracking()
+            .GroupBy(r => r.PlayerGuid)
+            .Select(g => new { Guid = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Guid, x => x.Count, StringComparer.OrdinalIgnoreCase, cancellationToken);
+
         var totals = playerRows.GroupBy(p => p.Guid, StringComparer.OrdinalIgnoreCase).Select(g =>
         {
             var rows = g.ToList();
@@ -107,6 +112,7 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
         return
         [
             Board("Games", totals, p => p.Games),
+            Board("Their body wasn't ready", totals, p => readyUpCounts.GetValueOrDefault(p.Guid)),
             Board("XP", totals, p => p.Xp),
             Board("Kills", totals, p => p.Kills),
             Board("Knife kills", totals, p => p.KnifeKills),

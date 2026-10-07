@@ -159,8 +159,69 @@ public static class IngestEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status409Conflict);
 
+        group.MapPost("/ready-ups", IngestLastReadyUpAsync)
+            .WithName("IngestLastReadyUp")
+            .Accepts<LastReadyUpDto>("application/json")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status409Conflict);
+
         return endpoints;
     }
+
+    private static async Task<IResult> IngestLastReadyUpAsync(
+        HttpRequest request, IDbContextFactory<StatsDbContext> dbFactory,
+        IOptions<IngestOptions> ingestOptions, ScoreboardCache scoreboardCache,
+        LastReadyUpDto dto, CancellationToken cancellationToken)
+    {
+        var authResult = ValidateBearerToken(request, ingestOptions);
+        if (authResult is not null) return authResult;
+
+        var playerGuid = dto.PlayerGuid?.Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(dto.EventId) || dto.EventId.Length > 64
+            || playerGuid is null || playerGuid.Length != 32 || !playerGuid.All(Uri.IsHexDigit)
+            || string.IsNullOrWhiteSpace(dto.ServerId) || dto.ServerId.Length > 256
+            || string.IsNullOrWhiteSpace(dto.MapName) || dto.MapName.Length > 64
+            || dto.Round is < 1 or > 2 || dto.ReadyAtUnix <= 0
+            || dto.CountdownAtUnix < dto.ReadyAtUnix || dto.CountdownAtUnix > 253402300799)
+        {
+            return Results.BadRequest(new { error = "Invalid last ready-up event" });
+        }
+
+        var readyUp = new LastReadyUp
+        {
+            EventId = dto.EventId, PlayerGuid = playerGuid, ReadyAtUnix = dto.ReadyAtUnix,
+            CountdownAtUnix = dto.CountdownAtUnix, ServerId = dto.ServerId.Trim(),
+            MapName = dto.MapName.Trim(), Round = dto.Round,
+        };
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var existing = await db.LastReadyUps.AsNoTracking().SingleOrDefaultAsync(
+            r => r.EventId == dto.EventId, cancellationToken);
+        if (existing is not null) return ReadyUpReplayResult(existing, readyUp);
+        db.LastReadyUps.Add(readyUp);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // Concurrent curl retries may race on the event's primary key.
+            existing = await db.LastReadyUps.AsNoTracking().SingleOrDefaultAsync(
+                r => r.EventId == dto.EventId, cancellationToken);
+            if (existing is null) throw;
+            return ReadyUpReplayResult(existing, readyUp);
+        }
+        scoreboardCache.Invalidate();
+        return Results.Ok();
+    }
+
+    private static IResult ReadyUpReplayResult(LastReadyUp existing, LastReadyUp incoming)
+        => existing.PlayerGuid == incoming.PlayerGuid && existing.ReadyAtUnix == incoming.ReadyAtUnix
+            && existing.CountdownAtUnix == incoming.CountdownAtUnix && existing.ServerId == incoming.ServerId
+            && existing.MapName == incoming.MapName && existing.Round == incoming.Round
+            ? Results.Ok()
+            : Results.Conflict(new { error = "Event ID already belongs to a different ready-up" });
 
     private static IResult? ValidateBearerToken(HttpRequest request, IOptions<IngestOptions> ingestOptions)
     {

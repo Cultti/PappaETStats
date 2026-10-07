@@ -14,6 +14,7 @@ local version = "2.0-dev"
 -- Hardcoded endpoint for now (will be config later)
 local WEBHOOK_URL = "https://et.aukko.net/api/matches"
 local WEBHOOK_MATCHID_URL = WEBHOOK_URL .. "/matchid"
+local WEBHOOK_READY_UP_URL = "https://et.aukko.net/api/ready-ups"
 local WEBHOOK_DEMO_URL_TEMPLATE = "https://et.aukko.net/api/matches/%s/demo"
 
 -- Read the bearer token from a separate file at startup. The
@@ -83,6 +84,12 @@ local classState = {}
 
 -- Current match id (shared across round 1 + round 2). Preserved across map_restart.
 local current_match_id = nil
+
+-- Confirm ready commands after the engine applies pers.ready, preserving order.
+local readyUps = {}
+local pendingReadyUp = nil
+local readySequence = 0
+local countdownSequence = 0
 
 -- ----------------------------------------------------------------------------
 -- Helpers
@@ -708,6 +715,61 @@ end
 -- ---------------------------------------------------------------------------
 -- Handle gamestate changes
 -- ---------------------------------------------------------------------------
+local function process_ready_ups()
+    local gamestate = tonumber(trap_Cvar_Get("gamestate"))
+    if gamestate ~= et.GS_WARMUP and gamestate ~= et.GS_WARMUP_COUNTDOWN then
+        return
+    end
+
+    if pendingReadyUp then
+        local candidate = pendingReadyUp
+        pendingReadyUp = nil
+        local client = candidate.client
+        local team = tonumber(gentity_get(client, "sess.sessionTeam"))
+        if guid_for_client(client) == candidate.guid
+            and gentity_get(client, "pers.connected") == CON_CONNECTED
+            and (team == 1 or team == 2)
+            and tonumber(gentity_get(client, "pers.ready")) == 1 then
+            readyUps[candidate.guid] = candidate
+        end
+    end
+    for guid, entry in pairs(readyUps) do
+        local team = tonumber(gentity_get(entry.client, "sess.sessionTeam"))
+        if guid_for_client(entry.client) ~= guid
+            or gentity_get(entry.client, "pers.connected") ~= CON_CONNECTED
+            or (team ~= 1 and team ~= 2)
+            or tonumber(gentity_get(entry.client, "pers.ready")) ~= 1 then
+            readyUps[guid] = nil
+        end
+    end
+end
+
+local function send_last_ready_up()
+    local last = nil
+    for _, entry in pairs(readyUps) do
+        if not last or entry.sequence > last.sequence then last = entry end
+    end
+    if not last then return end
+    if not json or AUTH_TOKEN == "" then
+        log("Last ready-up could not be sent: JSON or API authentication unavailable")
+        return
+    end
+    countdownSequence = countdownSequence + 1
+    local payload = json.encode({
+        eventId = fallbackMatchId() .. "-" .. tostring(countdownSequence),
+        playerGuid = last.guid,
+        readyAtUnix = last.atUnix,
+        countdownAtUnix = os.time(),
+        serverId = getServerId(),
+        mapName = get_current_mapname(),
+        round = safe_number(trap_Cvar_Get("g_currentRound")) + 1
+    })
+    local curl_cmd = "curl --fail -X POST -H " .. shell_quote("Authorization: Bearer " .. AUTH_TOKEN)
+        .. " " .. shell_quote(WEBHOOK_READY_UP_URL)
+    local ok, message = executeCurlCommandAsync(curl_cmd, payload)
+    log("Last ready-up POST " .. (ok and "started: " .. last.guid or "failed: " .. tostring(message)))
+end
+
 local function handle_gamestate_change()
     local newGamestate = tonumber(et.trap_Cvar_Get("gamestate"))
     local currentRound = safe_number(trap_Cvar_Get("g_currentRound"))
@@ -718,6 +780,15 @@ local function handle_gamestate_change()
     end
 
     log(string.format("Gamestate changed: %d -> %d", currentGameState, newGamestate))
+
+    if newGamestate == et.GS_WARMUP then
+        readyUps = {}
+        pendingReadyUp = nil
+    elseif newGamestate == et.GS_WARMUP_COUNTDOWN and currentGameState == et.GS_WARMUP then
+        send_last_ready_up()
+        readyUps = {}
+        pendingReadyUp = nil
+    end
 
     if newGamestate == et.GS_WARMUP and currentRound == 0 then
         -- Round 1 warmup: ensure no recording continues.
@@ -1058,6 +1129,7 @@ end
 -- ---------------------------------------------------------------------------
 
 function et_RunFrame(gameFrameLevelTime)
+    process_ready_ups()
     handle_gamestate_change()
     process_pending_send()
     process_pending_demo_stop()
@@ -1098,6 +1170,10 @@ function et_InitGame(levelTime, randomSeed, restart)
 
     initMaxClients()
     rebuild_connectedClients()
+    currentGameState = tonumber(trap_Cvar_Get("gamestate")) or et.GS_INITIALIZE
+    readyUps = {}
+    pendingReadyUp = nil
+    readySequence = 0
 
     local activeCount = 0
     for _ in pairs(connectedClients) do
@@ -1117,11 +1193,29 @@ function et_ClientBegin(clientNum)
     add_connected_client(clientNum)
 end
 
+function et_ClientCommand(clientNum, command)
+    process_ready_ups()
+    if tonumber(trap_Cvar_Get("gamestate")) ~= et.GS_WARMUP then return 0 end
+    local cmd = tostring(command or ""):lower()
+    if cmd ~= "ready" and cmd ~= "readytoggle" then return 0 end
+    local team = tonumber(gentity_get(clientNum, "sess.sessionTeam"))
+    if gentity_get(clientNum, "pers.connected") ~= CON_CONNECTED
+        or (team ~= 1 and team ~= 2)
+        or tonumber(gentity_get(clientNum, "pers.ready")) ~= 0 then return 0 end
+    local guid = guid_for_client(clientNum)
+    if #guid ~= 32 or not guid:match("^%x+$") then return 0 end
+    readySequence = readySequence + 1
+    pendingReadyUp = { client = clientNum, guid = guid, sequence = readySequence, atUnix = os.time() }
+    return 0
+end
+
 function et_ClientDisconnect(clientNum)
     local guid = guid_for_client(clientNum)
     if guid ~= "" then
         classstats_finalize(guid, trap_Milliseconds())
     end
+    readyUps[guid] = nil
+    if pendingReadyUp and pendingReadyUp.client == clientNum then pendingReadyUp = nil end
     remove_connected_client(clientNum)
 end
 

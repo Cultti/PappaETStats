@@ -7,6 +7,7 @@ namespace PappaETStats.Server.Data;
 public sealed class StatsDbContext(DbContextOptions<StatsDbContext> options) : DbContext(options)
 {
     public DbSet<Player> Players => Set<Player>();
+    public DbSet<LastReadyUp> LastReadyUps => Set<LastReadyUp>();
     public DbSet<Match> Matches => Set<Match>();
     public DbSet<MatchRound> MatchRounds => Set<MatchRound>();
     public DbSet<MatchSide> MatchSides => Set<MatchSide>();
@@ -37,6 +38,11 @@ public sealed class StatsDbContext(DbContextOptions<StatsDbContext> options) : D
         modelBuilder.Entity<Match>()
             .HasIndex(m => m.ExternalMatchId)
             .IsUnique();
+
+        modelBuilder.Entity<LastReadyUp>().HasKey(r => r.EventId);
+        modelBuilder.Entity<LastReadyUp>().Property(r => r.EventId).HasColumnType("varchar(64)");
+        modelBuilder.Entity<LastReadyUp>().Property(r => r.PlayerGuid).HasColumnType("varchar(64)");
+        modelBuilder.Entity<LastReadyUp>().HasIndex(r => r.PlayerGuid);
 
         modelBuilder.Entity<Match>()
             .HasMany(m => m.Rounds)
