@@ -63,6 +63,15 @@ public sealed partial class IngestEndpointsTests
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
     }
 
+    private static async Task<HttpResponseMessage> PostWithoutContentTypeAsync(HttpClient client, string path, object payload)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(payload)),
+        };
+        return await client.SendAsync(request);
+    }
+
     [Fact]
     public async Task OksiiStoresFullGuidsMetadataOptionalStatsAndLosslessEvents()
     {
@@ -92,6 +101,62 @@ public sealed partial class IngestEndpointsTests
         Assert.Equal(1, canonical.RootElement.GetProperty("spectators").GetArrayLength());
         Assert.Contains("future_context", (await db.RoundEvents.SingleAsync(e => e.Label == "obj_planted")).DataJson);
         Assert.Equal(1, await db.MatchSeries.CountAsync());
+    }
+
+    [Fact]
+    public async Task VersionEndpointReturnsOksiiExpectedVersionAndSampleRoundsIngest()
+    {
+        await using var host = await TestHost.Start();
+
+        var versionResponse = await host.Client.GetAsync("/api/v2/stats/etl/matches/stats/version");
+        versionResponse.EnsureSuccessStatusCode();
+        Assert.Equal("2.10.0", (await versionResponse.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("version").GetString());
+
+        var examplesPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../data/examples"));
+        foreach (var fileName in new[]
+        {
+            "stats-1791637580-2026-10-10-130620-etl_adlernest-round-1.json",
+            "stats-1791637713-2026-10-10-130833-etl_adlernest-round-2.json",
+        })
+        {
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(examplesPath, fileName)));
+            var response = await host.Client.PostAsJsonAsync(OksiiSubmit, document.RootElement);
+            Assert.True(response.IsSuccessStatusCode, $"{fileName}: {await response.Content.ReadAsStringAsync()}");
+        }
+
+        await using var db = host.CreateDb();
+        Assert.Equal(1, await db.Matches.CountAsync());
+        Assert.Equal(2, await db.MatchRounds.CountAsync());
+    }
+
+    [Fact]
+    public async Task IngestEndpointsAcceptJsonBodiesWithoutContentType()
+    {
+        await using var host = await TestHost.Start();
+        var readyUp = new LastReadyUpDto("no-content-type", new string('A', 32), 100, 110, "cup-1", "supply", 1);
+        var roster = new
+        {
+            server_ip = "127.0.0.1",
+            server_port = "27960",
+            timestamp = 100L,
+            connected_players = Array.Empty<object>(),
+            spectators = Array.Empty<object>(),
+        };
+        var requests = new[]
+        {
+            ("/api/matches", (object)Payload("no-content-type-legacy", "cup-1", "Cup", 1)),
+            (OksiiSubmit, (object)OksiiPayload("supply", 1, 1790000000, "no-content-type-oksii")),
+            ("/api/v2/stats/etl/matches/players/notify", roster),
+            ("/api/ready-ups", readyUp),
+        };
+
+        foreach (var (path, payload) in requests)
+        {
+            using var response = await PostWithoutContentTypeAsync(host.Client, path, payload);
+            Assert.True(response.IsSuccessStatusCode,
+                $"{path}: HTTP {(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}");
+        }
     }
 
     [Fact]

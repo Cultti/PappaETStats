@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Security.Cryptography;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Options;
@@ -146,6 +147,25 @@ public static class IngestEndpoints
 
     public static IEndpointRouteBuilder MapIngestEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        if (endpoints is IApplicationBuilder app)
+        {
+            app.Use(async (context, next) =>
+            {
+                var path = context.Request.Path;
+                if (HttpMethods.IsPost(context.Request.Method)
+                    && string.IsNullOrWhiteSpace(context.Request.ContentType)
+                    && (path == "/api/matches"
+                        || path == "/api/ready-ups"
+                        || path == "/api/v2/stats/etl/matches/stats/submit"
+                        || path == "/api/v2/stats/etl/matches/players/notify"))
+                {
+                    context.Request.ContentType = "application/json";
+                }
+
+                await next(context);
+            });
+        }
+
         var group = endpoints.MapGroup("/api")
             .WithTags("Ingest");
 
@@ -165,6 +185,9 @@ public static class IngestEndpoints
 
         group.MapPost("/v2/stats/etl/matches/stats/submit", IngestOksiiAsync)
             .WithName("IngestOksiiStats");
+        group.MapGet("/v2/stats/etl/matches/stats/version",
+            (HttpRequest request, IOptions<IngestOptions> options) =>
+                ValidateBearerToken(request, options) ?? Results.Ok(new { version = "2.10.0" }));
         group.MapPost("/v2/stats/etl/matches/players/notify", IngestRosterAsync);
         group.MapGet("/v2/stats/etl/matches/matchid/{serverIp}/{serverPort}",
             (HttpRequest request, IOptions<IngestOptions> options, string serverIp, string serverPort) =>
