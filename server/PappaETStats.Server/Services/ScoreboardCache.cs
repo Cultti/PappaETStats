@@ -52,7 +52,7 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
             join r in db.MatchRounds.AsNoTracking() on s.MatchRoundId equals r.Id
             where p.Guid != null && p.Guid != ""
             select new PlayerRoundRow(
-                p.Guid!, p.Name, r.MatchId, r.RoundStartMs, r.RoundEndMs,
+                p.Guid!, p.Name, r.MatchId, r.Match.SeriesId, r.RoundStartMs, r.RoundEndMs,
                 r.RoundStartUnix, r.RoundEndUnix, r.IngestedAtUtc, p.TimePlayedPercent,
                 p.Xp, p.DamageGiven, p.DamageReceived, p.Gibs, p.SelfKills, p.TeamKills, p.TeamGibs,
                 p.MultiKills2, p.MultiKills3, p.MultiKills4, p.MultiKills5, p.MultiKills6)
@@ -84,6 +84,17 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
             .Select(g => new { Guid = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Guid, x => x.Count, StringComparer.OrdinalIgnoreCase, cancellationToken);
 
+        var extraTotals = await db.MatchPlayers.AsNoTracking().Where(p => p.Guid != "")
+            .GroupBy(p => p.Guid).Select(g => new
+            {
+                Guid = g.Key,
+                Assists = g.Sum(p => (long)(p.Assists ?? 0)),
+                Plants = g.Sum(p => (long)(p.ObjectivesPlanted ?? 0)), Defuses = g.Sum(p => (long)(p.ObjectivesDefused ?? 0)),
+                Secures = g.Sum(p => (long)(p.ObjectivesSecured ?? 0)), Returns = g.Sum(p => (long)(p.ObjectivesReturned ?? 0)),
+                Repairs = g.Sum(p => (long)(p.ObjectivesRepaired ?? 0)), Destroyed = g.Sum(p => (long)(p.ObjectivesDestroyed ?? 0)),
+                Distance = g.Sum(p => p.DistanceMeters ?? 0), Alive = g.Sum(p => p.AliveSeconds ?? 0), Engaged = g.Sum(p => p.EngagedSeconds ?? 0)
+            }).ToDictionaryAsync(p => p.Guid, StringComparer.OrdinalIgnoreCase, cancellationToken);
+
         var totals = playerRows.GroupBy(p => p.Guid, StringComparer.OrdinalIgnoreCase).Select(g =>
         {
             var rows = g.ToList();
@@ -96,7 +107,12 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
             weaponsByGuid.TryGetValue(g.Key, out var weapon);
             return new PlayerTotals(
                 g.Key, string.IsNullOrWhiteSpace(latestName) ? g.Key : latestName,
-                g.Select(x => x.MatchId).Distinct().Count(), lastPlayedUtc, rows.Sum(x => x.Xp),
+                g.Select(x => x.MatchId).Distinct().Count(),
+                // Count from the rows already loaded above. A grouped SQL
+                // Distinct().Count() generates a correlated derived table
+                // that MariaDB cannot resolve against the outer player GUID.
+                g.Select(x => x.SeriesId ?? x.MatchId).Distinct().Count(),
+                lastPlayedUtc, rows.Sum(x => x.Xp),
                 rows.Sum(x => (long)x.DamageGiven), rows.Sum(x => (long)x.DamageReceived),
                 rows.Sum(x => (long)x.Gibs), rows.Sum(x => (long)x.SelfKills),
                 rows.Sum(x => (long)x.TeamKills), rows.Sum(x => (long)x.TeamGibs),
@@ -111,7 +127,18 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
 
         return
         [
-            Board("Games", totals, p => p.Games),
+            Board("Maps played", totals, p => p.Games),
+            Board("Matches played", totals, p => p.Matches),
+            Board("Assists", totals, p => extraTotals.GetValueOrDefault(p.Guid)?.Assists ?? 0),
+            Board("Objectives planted", totals, p => extraTotals.GetValueOrDefault(p.Guid)?.Plants ?? 0),
+            Board("Objectives defused", totals, p => extraTotals.GetValueOrDefault(p.Guid)?.Defuses ?? 0),
+            Board("Objectives secured", totals, p => extraTotals.GetValueOrDefault(p.Guid)?.Secures ?? 0),
+            Board("Objectives returned", totals, p => extraTotals.GetValueOrDefault(p.Guid)?.Returns ?? 0),
+            Board("Objectives repaired", totals, p => extraTotals.GetValueOrDefault(p.Guid)?.Repairs ?? 0),
+            Board("Objectives destroyed", totals, p => extraTotals.GetValueOrDefault(p.Guid)?.Destroyed ?? 0),
+            Board("Distance travelled", totals, p => extraTotals.GetValueOrDefault(p.Guid)?.Distance ?? 0, "N0", " m"),
+            Board("Activity", totals.Where(p => (extraTotals.GetValueOrDefault(p.Guid)?.Alive ?? 0) >= 60).ToList(),
+                p => 100 * extraTotals[p.Guid].Engaged / extraTotals[p.Guid].Alive, "N1", "%"),
             Board("Their body wasn't ready", totals, p => readyUpCounts.GetValueOrDefault(p.Guid)),
             Board("XP", totals, p => p.Xp),
             Board("Kills", totals, p => p.Kills),
@@ -159,14 +186,14 @@ public sealed class ScoreboardCache(IDbContextFactory<StatsDbContext> dbFactory)
         return $"{hours}:{minutes:00}:{remainingSeconds:00}";
     }
 
-    private sealed record PlayerRoundRow(string Guid, string Name, Guid MatchId, long RoundStartMs, long RoundEndMs,
+    private sealed record PlayerRoundRow(string Guid, string Name, Guid MatchId, Guid? SeriesId, long RoundStartMs, long RoundEndMs,
         long RoundStartUnix, long RoundEndUnix, DateTime IngestedAtUtc, double TimePlayedPercent,
         int Xp, int DamageGiven, int DamageReceived, int Gibs, int SelfKills,
         int TeamKills, int TeamGibs, int MultiKills2, int MultiKills3, int MultiKills4, int MultiKills5, int MultiKills6);
     private sealed record WeaponRow(string Guid, int Weapon, int Hits, int Atts, int Kills, int Deaths, int Headshots);
     private sealed record WeaponTotals(long Kills, long KnifeKills, long MortarKills, long Deaths, long Headshots,
         long Revives, long Hits, long Atts);
-    private sealed record PlayerTotals(string Guid, string Name, int Games, DateTime LastPlayedUtc, int Xp,
+    private sealed record PlayerTotals(string Guid, string Name, int Games, int Matches, DateTime LastPlayedUtc, int Xp,
         long DamageGiven, long DamageReceived, long Gibs, long SelfKills, long TeamKills, long TeamGibs,
         long Kills, long KnifeKills, long MortarKills, long Deaths, long Headshots, long Revives, long MultiKills2,
         long MultiKills3, long MultiKills4, long MultiKills5, long MultiKills6, long WeaponHits, long WeaponAtts,

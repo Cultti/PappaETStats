@@ -6,6 +6,13 @@ public sealed class Match
 {
     public Guid Id { get; set; }
 
+    public Guid? SeriesId { get; set; }
+    public MatchSeries? Series { get; set; }
+    public int MapNumber { get; set; }
+    // Which round-one faction represents series team 1 (teams swap in round 2).
+    public int SeriesTeam1Faction { get; set; } = 1;
+    [MaxLength(64)] public string? SourceMatchId { get; set; }
+
     [MaxLength(64)]
     public required string ExternalMatchId { get; set; }
 

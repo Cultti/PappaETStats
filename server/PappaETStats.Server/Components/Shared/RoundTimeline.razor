@@ -1,0 +1,97 @@
+@using Microsoft.EntityFrameworkCore
+@using System.Text.Json
+@using PappaETStats.Server.Api
+@using PappaETStats.Server.Data
+@using PappaETStats.Server.Domain
+@inject IDbContextFactory<StatsDbContext> DbFactory
+
+<MudPaper Class="pa-4 mt-4" Elevation="1">
+    <MudText Typo="Typo.h6">Round timeline</MudText>
+    <MudSelect T="string" Label="Event type" Value="_filter" ValueChanged="FilterChanged" Class="my-3">
+        <MudSelectItem T="string" Value="@string.Empty">All events</MudSelectItem>
+        @foreach (var label in _labels)
+        {
+            <MudSelectItem T="string" Value="@label">@Title(label)</MudSelectItem>
+        }
+    </MudSelect>
+    <MudTable Items="_events" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm" RowsPerPage="25" Elevation="0">
+        <HeaderContent><MudTh>Time</MudTh><MudTh>Event</MudTh><MudTh>Player</MudTh><MudTh>Details</MudTh></HeaderContent>
+        <RowTemplate Context="ev">
+            <MudTd DataLabel="Time">@Time(ev.LevelTime)</MudTd>
+            <MudTd DataLabel="Event">@Title(ev.Label)</MudTd>
+            <MudTd DataLabel="Player"><EtColoredText Text="@Actor(ev)" /></MudTd>
+            <MudTd DataLabel="Details"><EtColoredText Text="@Description(ev)" /></MudTd>
+        </RowTemplate>
+        <PagerContent><MudTablePager /></PagerContent>
+        <NoRecordsContent><MudText>No events recorded.</MudText></NoRecordsContent>
+    </MudTable>
+    @if (_count > 200)
+    {
+        <MudText Typo="Typo.body2" Class="mt-2">Showing the first 200 of @_count events. Choose an event type to narrow the timeline.</MudText>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public Guid RoundId { get; set; }
+    [Parameter] public long RoundStartMs { get; set; }
+    private string _filter = "";
+    private List<string> _labels = [];
+    private List<RoundEvent> _events = [];
+    private List<RoundEvent> _pauses = [];
+    private Dictionary<string, string> _names = new(StringComparer.OrdinalIgnoreCase);
+    private int _count;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _filter = "";
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _labels = await db.RoundEvents.Where(e => e.MatchRoundId == RoundId).Select(e => e.Label).Distinct().OrderBy(e => e).ToListAsync();
+        _pauses = await db.RoundEvents.AsNoTracking().Where(e => e.MatchRoundId == RoundId && (e.Label == "pause" || e.Label == "unpause"))
+            .OrderBy(e => e.Sequence).ToListAsync();
+        var names = await db.MatchPlayers.Where(p => p.MatchSide.MatchRoundId == RoundId).Select(p => new { p.Guid, p.Name }).ToListAsync();
+        _names = names.GroupBy(p => p.Guid, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Name, StringComparer.OrdinalIgnoreCase);
+        await Load();
+    }
+    private async Task FilterChanged(string value) { _filter = value; await Load(); }
+    private async Task Load()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var query = db.RoundEvents.AsNoTracking().Where(e => e.MatchRoundId == RoundId);
+        if (_filter.Length > 0) query = query.Where(e => e.Label == _filter);
+        _count = await query.CountAsync();
+        _events = await query.OrderBy(e => e.Sequence).Take(200).ToListAsync();
+    }
+    private string Time(long timestamp)
+    {
+        long paused = 0; long? began = null;
+        foreach (var ev in _pauses.Where(e => e.LevelTime <= timestamp))
+        {
+            if (ev.Label == "pause") began ??= ev.LevelTime;
+            else if (began.HasValue) { paused += Math.Max(0, ev.LevelTime - began.Value); began = null; }
+        }
+        if (began.HasValue) paused += Math.Max(0, timestamp - began.Value);
+        var duration = TimeSpan.FromMilliseconds(Math.Max(0, timestamp - RoundStartMs - paused));
+        return $"{(int)duration.TotalMinutes}:{duration.Seconds:00}.{duration.Milliseconds:000}";
+    }
+    private string Name(string guid) => _names.GetValueOrDefault(guid, guid);
+    private string Actor(RoundEvent ev)
+    {
+        using var json = JsonDocument.Parse(ev.DataJson);
+        var guid = OksiiStatsAdapter.Text(json.RootElement, "player");
+        if (guid.Length == 0) guid = OksiiStatsAdapter.Text(json.RootElement, "killer");
+        return Name(guid);
+    }
+    private string Description(RoundEvent ev)
+    {
+        using var json = JsonDocument.Parse(ev.DataJson);
+        var root = json.RootElement;
+        var values = new List<string>();
+        var victim = OksiiStatsAdapter.Text(root, "victim"); if (victim.Length > 0) values.Add(Name(victim));
+        foreach (var key in new[] { "objective", "vehicle", "message", "vsay_text", "class" })
+        { var value = OksiiStatsAdapter.Text(root, key); if (value.Length > 0) values.Add(value); }
+        var damage = OksiiStatsAdapter.Text(root, "damage"); if (damage.Length > 0) values.Add($"{damage} damage");
+        var region = OksiiStatsAdapter.Text(root, "hit_region"); if (region.Length > 0) values.Add(region.Replace("HR_", ""));
+        return string.Join(" · ", values);
+    }
+    private static string Title(string label) => label.Replace("obj_", "Objective: ").Replace('_', ' ');
+}

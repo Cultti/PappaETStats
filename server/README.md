@@ -214,7 +214,7 @@ Responses (all bodies are JSON; error bodies contain an `error` message suitable
 
 ### Last ready-up tracking
 
-`pappastats.lua` observes `ready` and `readytoggle` during warmup, confirms the
+[`pappaready.lua`](../et-server/pappaready.lua) observes `ready` and `readytoggle` during warmup, confirms the
 engine's ready state, and posts the last currently ready Axis/Allies player's
 GUID when the server enters warmup countdown (either stopwatch round).
 Unready players, spectators, disconnected clients, and rejected commands are
@@ -227,7 +227,12 @@ are `eventId`, `playerGuid` (32 hexadecimal characters), `readyAtUnix`,
 in uppercase. Event IDs make retries idempotent; conflicting reuse returns 409.
 Events are stored independently of completed match uploads, so a countdown
 counts even if the round is subsequently abandoned. Lua uses the existing
-background curl helper and its bounded retries.
+background curl with bounded retries. The standalone script uses the existing
+`pappa_api_key_file` and `pappa_stats_server_id` configuration and can run alongside
+Oksii's `stats.lua`. Replace `pappastats.lua` with `pappaready.lua` in `lua_modules`
+when switching to Oksii; the legacy collector also sends ready-up events, so
+running both would duplicate them. Check ready-up behavior with
+`lua et-server/tests/pappaready_test.lua`.
 
 The **Their body wasn't ready** scoreboard ranks the top five players by total
 last ready-ups, with the same 20-match and recent-activity eligibility as the

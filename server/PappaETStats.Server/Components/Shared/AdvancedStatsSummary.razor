@@ -1,0 +1,128 @@
+@using Microsoft.EntityFrameworkCore
+@using System.Globalization
+@using System.Text.Json
+@using PappaETStats.Server.Api
+@using PappaETStats.Server.Data
+@using PappaETStats.Server.Domain
+@inject IDbContextFactory<StatsDbContext> DbFactory
+
+@if (_players.Count > 0)
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="1">
+        <MudText Typo="Typo.h6">Support, objectives &amp; movement</MudText>
+        <MudText Typo="Typo.body2" Class="mb-3">A dash means the stat was not recorded. Activity is engaged time divided by alive time; its sources can overlap.</MudText>
+        <MudTable Items="_players" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm" Elevation="0">
+            <HeaderContent>
+                <MudTh>Player</MudTh><MudTh>Assists</MudTh><MudTh>Plants</MudTh><MudTh>Defuses</MudTh>
+                <MudTh>Secures</MudTh><MudTh>Returns</MudTh><MudTh>Distance</MudTh><MudTh>Spawns</MudTh><MudTh>Activity</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="p">
+                <MudTd DataLabel="Player"><MudLink Href="@($"/player/{p.Guid}")"><EtColoredText Text="@p.Name" /></MudLink></MudTd>
+                <MudTd DataLabel="Assists">@p.Assists</MudTd><MudTd DataLabel="Plants">@p.Plants</MudTd>
+                <MudTd DataLabel="Defuses">@p.Defuses</MudTd><MudTd DataLabel="Secures">@p.Secures</MudTd>
+                <MudTd DataLabel="Returns">@p.Returns</MudTd><MudTd DataLabel="Distance">@p.Distance</MudTd>
+                <MudTd DataLabel="Spawns">@p.Spawns</MudTd><MudTd DataLabel="Activity">@p.Activity</MudTd>
+            </RowTemplate>
+        </MudTable>
+        <MudExpansionPanels Elevation="0" Class="mt-3">
+            @foreach (var player in _players.Where(p => p.Details.Count > 0))
+            {
+                <MudExpansionPanel Text="@($"{PappaETStats.Server.Util.EtColorCodes.Strip(player.Name)} · detailed stats")">
+                    <MudGrid Spacing="2">
+                        @foreach (var detail in player.Details)
+                        {
+                            <MudItem xs="12" sm="6" md="4"><MudText Typo="Typo.body2"><strong>@detail.Key:</strong> @detail.Value</MudText></MudItem>
+                        }
+                    </MudGrid>
+                </MudExpansionPanel>
+            }
+        </MudExpansionPanels>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public IReadOnlyCollection<Guid>? MapIds { get; set; }
+    [Parameter] public Guid? RoundId { get; set; }
+    [Parameter] public string? PlayerGuid { get; set; }
+    private List<Summary> _players = [];
+    private sealed record Summary(string Guid, string Name, string Assists, string Plants, string Defuses,
+        string Secures, string Returns, string Distance, string Spawns, string Activity, Dictionary<string, string> Details);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var query = db.MatchPlayers.AsNoTracking().AsQueryable();
+        if (MapIds != null) query = query.Where(p => MapIds.Contains(p.MatchSide.MatchRound.MatchId));
+        if (RoundId.HasValue) query = query.Where(p => p.MatchSide.MatchRoundId == RoundId.Value);
+        if (!string.IsNullOrEmpty(PlayerGuid)) query = query.Where(p => p.Guid == PlayerGuid.ToUpper());
+        if (MapIds == null && !RoundId.HasValue && string.IsNullOrEmpty(PlayerGuid)) { _players = []; return; }
+        var rows = await query.Where(p => p.DetailsJson != null).OrderBy(p => p.MatchSide.MatchRound.RoundStartUnix).ToListAsync();
+        _players = rows.GroupBy(p => p.Guid, StringComparer.OrdinalIgnoreCase).Select(g =>
+        {
+            var players = g.ToList();
+            static string Sum(IEnumerable<double?> values, string suffix = "")
+            {
+                var present = values.Where(x => x.HasValue).ToList();
+                return present.Count == 0 ? "—" : present.Sum(x => x!.Value).ToString(suffix.Length > 0 ? "N1" : "N0", CultureInfo.InvariantCulture) + suffix;
+            }
+            var alive = players.Sum(p => p.AliveSeconds ?? 0);
+            var engaged = players.Sum(p => p.EngagedSeconds ?? 0);
+            var details = new Dictionary<string, string>();
+            details["Destroyed"] = Sum(players.Select(p => (double?)p.ObjectivesDestroyed));
+            details["Repaired"] = Sum(players.Select(p => (double?)p.ObjectivesRepaired));
+            details["Alive"] = Sum(players.Select(p => p.AliveSeconds), " s");
+            details["Engaged"] = Sum(players.Select(p => p.EngagedSeconds), " s");
+            details["Downed"] = Sum(players.Select(p => p.DownedSeconds), " s");
+            var documents = players.Select(p => JsonDocument.Parse(p.DetailsJson!)).ToList();
+            try
+            {
+                var roots = documents.Select(d => d.RootElement).ToList();
+                foreach (var category in new[] { "stance_stats_seconds", "activity_stats_seconds" })
+                {
+                    var keys = roots.Select(r => OksiiStatsAdapter.Field(r, category)).Where(r => r.ValueKind == JsonValueKind.Object)
+                        .SelectMany(r => r.EnumerateObject().Select(p => p.Name)).Distinct();
+                    foreach (var key in keys)
+                        details[Title(key)] = Sum(roots.Select(r => OksiiStatsAdapter.OptionalNumber(OksiiStatsAdapter.Field(r, category), key)), " s");
+                }
+                var peaks = roots.Select(r => OksiiStatsAdapter.OptionalNumber(OksiiStatsAdapter.Field(r, "player_speed"), "kph_peak")).Where(v => v.HasValue).ToList();
+                if (peaks.Count > 0) details["Peak speed"] = peaks.Max()!.Value.ToString("N1", CultureInfo.InvariantCulture) + " km/h";
+                var spawnDistance = roots.Select(r => OksiiStatsAdapter.OptionalNumber(r, "distance_travelled_spawn")).ToList();
+                if (spawnDistance.Any(v => v.HasValue)) details["Distance after spawn"] = Sum(spawnDistance, " m");
+                foreach (var key in new[] { "obj_taken", "obj_repickup", "obj_dropped", "obj_carrierkilled", "obj_flagcaptured", "obj_misc", "shoves_given", "shoves_received" })
+                {
+                    var values = roots.Select(r => OksiiStatsAdapter.Field(r, key)).Where(r => r.ValueKind == JsonValueKind.Object).ToList();
+                    if (values.Count > 0) details[Title(key)] = values.Sum(v => v.EnumerateObject().Count()).ToString(CultureInfo.InvariantCulture);
+                }
+                var vehicles = roots.Select(r => OksiiStatsAdapter.Field(r, "obj_vehicle")).Where(v => v.ValueKind == JsonValueKind.Object).ToList();
+                if (vehicles.Count > 0)
+                {
+                    details["Vehicle damage"] = Sum(vehicles.Select(v => OksiiStatsAdapter.OptionalNumber(OksiiStatsAdapter.Field(v, "damage"), "damage")));
+                    details["Vehicle hits"] = Sum(vehicles.Select(v => OksiiStatsAdapter.OptionalNumber(OksiiStatsAdapter.Field(v, "damage"), "hits")));
+                    details["Vehicle repairs"] = Sum(vehicles.Select(v => OksiiStatsAdapter.OptionalNumber(v, "repairs")));
+                    var escorts = vehicles.Select(v => OksiiStatsAdapter.Field(v, "escort")).Where(v => v.ValueKind == JsonValueKind.Object).SelectMany(v => v.EnumerateObject()).ToList();
+                    details["Vehicle escort"] = Sum(escorts.Select(v => OksiiStatsAdapter.OptionalNumber(v.Value, "time_s")), " s");
+                    details["Vehicle escort distance"] = Sum(escorts.Select(v => OksiiStatsAdapter.OptionalNumber(v.Value, "distance")), " game units");
+                }
+            }
+            finally { foreach (var document in documents) document.Dispose(); }
+            return new Summary(g.Key, players.Last().Name, Sum(players.Select(p => (double?)p.Assists)),
+                Sum(players.Select(p => (double?)p.ObjectivesPlanted)), Sum(players.Select(p => (double?)p.ObjectivesDefused)),
+                Sum(players.Select(p => (double?)p.ObjectivesSecured)), Sum(players.Select(p => (double?)p.ObjectivesReturned)),
+                Sum(players.Select(p => p.DistanceMeters), " m"), Sum(players.Select(p => (double?)p.SpawnCount)),
+                alive > 0 ? (100 * engaged / alive).ToString("N1", CultureInfo.InvariantCulture) + "%" : "—", details);
+        }).OrderBy(p => p.Name).ToList();
+    }
+
+    private static string Title(string key) => key switch
+    {
+        "in_prone" => "Prone", "in_crouch" => "Crouched", "in_mg" => "Mounted", "in_lean" => "Leaning",
+        "in_objcarrier" => "Carrying objective", "in_vehiclescort" => "Escorting vehicle", "in_disguise" => "Disguised",
+        "in_sprint" => "Sprinting", "in_turtle" => "Recovering stamina", "is_downed" => "Downed",
+        "alive" => "Alive", "engaged" => "Engaged", "from_weapon" => "Activity from weapons",
+        "from_dmg_dealt" => "Activity from damage dealt", "from_dmg_taken" => "Activity from damage taken",
+        "from_objective" => "Activity from objectives", "from_support" => "Support activity",
+        "obj_taken" => "Objectives taken", "obj_repickup" => "Objectives picked up", "obj_dropped" => "Objectives dropped",
+        "obj_carrierkilled" => "Carriers killed", "obj_flagcaptured" => "Flags captured", "obj_misc" => "Other objectives",
+        "shoves_given" => "Shoves given", "shoves_received" => "Shoves received", _ => key.Replace('_', ' ')
+    };
+}

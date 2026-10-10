@@ -3,6 +3,9 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using MudBlazor.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -19,7 +22,7 @@ using Xunit;
 
 namespace PappaETStats.Server.Tests;
 
-public sealed class IngestEndpointsTests
+public sealed partial class IngestEndpointsTests
 {
     [Fact]
     public async Task RoundRetriesPreserveRowsRatingsAndSendOnlyOneWebhook()
@@ -307,7 +310,7 @@ public sealed class IngestEndpointsTests
         public ScoreboardCache ScoreboardCache => app.Services.GetRequiredService<ScoreboardCache>();
         public StatsDbContext CreateDb() => new(new DbContextOptionsBuilder<StatsDbContext>().UseSqlite(connection).Options);
 
-        public static async Task<TestHost> Start(bool webhook = false)
+        public static async Task<TestHost> Start(bool webhook = false, bool renderPages = false)
         {
             var connection = new SqliteConnection("Data Source=:memory:");
             await connection.OpenAsync();
@@ -323,8 +326,27 @@ public sealed class IngestEndpointsTests
             builder.Services.AddHttpClient(string.Empty).ConfigurePrimaryHttpMessageHandler(sp => sp.GetRequiredService<CountingHttpHandler>());
             builder.Services.AddDbContextFactory<StatsDbContext>(o => o.UseSqlite(connection));
             builder.Services.AddSingleton<ScoreboardCache>();
+            if (renderPages)
+            {
+                builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+                builder.Services.AddMudServices();
+                builder.Services.AddScoped<RegistrationTokenService>();
+                builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie();
+                builder.Services.AddAuthorization();
+                builder.Services.AddCascadingAuthenticationState();
+                builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
+            }
             var app = builder.Build();
             app.MapIngestEndpoints();
+            if (renderPages)
+            {
+                app.UseDeveloperExceptionPage();
+                app.UseAntiforgery();
+                app.MapRazorComponents<PappaETStats.Server.Components.App>().AddInteractiveServerRenderMode();
+                app.MapGet("/test/rounds/{id:guid}", (Guid id) =>
+                    new Microsoft.AspNetCore.Http.HttpResults.RazorComponentResult<PappaETStats.Server.Components.Shared.RoundTimeline>(
+                        new { RoundId = id, RoundStartMs = 1000L }));
+            }
             await using (var db = await app.Services.GetRequiredService<IDbContextFactory<StatsDbContext>>().CreateDbContextAsync())
             {
                 await db.Database.EnsureCreatedAsync();

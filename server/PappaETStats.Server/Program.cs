@@ -49,6 +49,8 @@ builder.Services.AddOptions<IngestOptions>()
         $"{IngestOptions.SectionName}:Token is required; API ingest endpoints must not run without authentication.")
     .Validate(options => options.Token == options.Token?.Trim(),
         $"{IngestOptions.SectionName}:Token must not have leading or trailing whitespace.")
+    .Validate(options => double.IsFinite(options.MatchGapHours) && options.MatchGapHours > 0,
+        $"{IngestOptions.SectionName}:MatchGapHours must be a positive finite number.")
     .ValidateOnStart();
 builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminOptions.SectionName));
 builder.Services.Configure<DbOptions>(builder.Configuration.GetSection(DbOptions.SectionName));
@@ -173,6 +175,9 @@ using (var scope = app.Services.CreateScope())
     var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<StatsDbContext>>();
     await using var db = await dbFactory.CreateDbContextAsync();
     await db.Database.MigrateAsync();
+    await CanonicalStats.BackfillAsync(db);
+    await MatchSeriesBuilder.RebuildAsync(db,
+        scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<IngestOptions>>().Value.MatchGapHours);
 }
 
 // Configure the HTTP request pipeline.

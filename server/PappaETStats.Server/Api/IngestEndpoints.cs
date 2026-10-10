@@ -16,6 +16,8 @@ namespace PappaETStats.Server.Api;
 
 public static class IngestEndpoints
 {
+    // Serialize round replacements and chronological match grouping in this process.
+    private static readonly SemaphoreSlim IngestLock = new(1, 1);
     private sealed record Round1WeaponSnapshot(int Hits, int Atts, int Kills, int Deaths, int Headshots);
 
     private static string ObituaryKey(long timestamp, string? target, string? attacker, int meansOfDeath)
@@ -160,6 +162,13 @@ public static class IngestEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status409Conflict);
+
+        group.MapPost("/v2/stats/etl/matches/stats/submit", IngestOksiiAsync)
+            .WithName("IngestOksiiStats");
+        group.MapPost("/v2/stats/etl/matches/players/notify", IngestRosterAsync);
+        group.MapGet("/v2/stats/etl/matches/matchid/{serverIp}/{serverPort}",
+            (HttpRequest request, IOptions<IngestOptions> options, string serverIp, string serverPort) =>
+                ValidateBearerToken(request, options) ?? Results.Ok(new { match_id = Guid.NewGuid().ToString("N") }));
 
         group.MapPost("/ready-ups", IngestLastReadyUpAsync)
             .WithName("IngestLastReadyUp")
@@ -350,14 +359,101 @@ public static class IngestEndpoints
             return authResult;
         }
 
-        await using var strategyDb = await dbFactory.CreateDbContextAsync(cancellationToken);
-        return await strategyDb.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        await IngestLock.WaitAsync(cancellationToken);
+        try
         {
-            await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-            return await IngestMatchCoreAsync(db, transaction, webhookOptions, skillRatingOptions,
-                httpClientFactory, loggerFactory, scoreboardCache, dto, cancellationToken);
-        });
+            await using var strategyDb = await dbFactory.CreateDbContextAsync(cancellationToken);
+            return await strategyDb.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+                await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+                return await IngestMatchCoreAsync(db, transaction, webhookOptions, skillRatingOptions,
+                    httpClientFactory, loggerFactory, scoreboardCache, dto, ingestOptions.Value.MatchGapHours, cancellationToken);
+            });
+        }
+        finally { IngestLock.Release(); }
+    }
+
+    private static async Task<IResult> IngestOksiiAsync(HttpRequest request,
+        IDbContextFactory<StatsDbContext> dbFactory, IOptions<IngestOptions> ingestOptions,
+        IOptions<WebhookOptions> webhookOptions, IOptions<SkillRatingOptions> skillRatingOptions,
+        IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory, ScoreboardCache scoreboardCache,
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var auth = ValidateBearerToken(request, ingestOptions);
+        if (auth != null) return auth;
+        MatchIngestDto parsed;
+        try
+        {
+            parsed = OksiiStatsAdapter.Parse(payload, "pending");
+            if (parsed.Round is not (1 or 2) || string.IsNullOrWhiteSpace(parsed.MapName) || parsed.MapName.Length > 64
+                || string.IsNullOrWhiteSpace(parsed.ServerIp) || parsed.ServerIp.Length > 64
+                || string.IsNullOrWhiteSpace(parsed.ServerPort) || parsed.ServerPort.Length > 16
+                || parsed.ServerName?.Length > 256 || parsed.Config?.Length > 64
+                || parsed.RoundStartUnix <= 0 || parsed.RoundEndUnix < parsed.RoundStartUnix
+                || parsed.RoundEndUnix > 253402300799 || parsed.RoundEnd < parsed.RoundStart
+                || parsed.Players?.Count == 0)
+                return Results.BadRequest(new { error = "Invalid round identity, timing, server or players" });
+        }
+        catch (Exception ex) when (ex is JsonException or OverflowException or InvalidOperationException)
+        { return Results.BadRequest(new { error = ex.Message }); }
+        await IngestLock.WaitAsync(cancellationToken);
+        try
+        {
+            await using var strategyDb = await dbFactory.CreateDbContextAsync(cancellationToken);
+            return await strategyDb.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+                await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+                // Source match IDs can span many maps or change between rounds (the
+                // script's Unix fallback). Pair by server/map/timing, never that ID alone.
+                var candidates = await db.Matches.Include(m => m.Rounds)
+                    .Where(m => m.ServerId == parsed.ServerId && m.ServerIp == parsed.ServerIp && m.ServerPort == parsed.ServerPort
+                        && m.MapName == parsed.MapName && m.Rounds.Any(r => r.RoundStartUnix >= parsed.RoundStartUnix - 21600
+                            && r.RoundStartUnix <= parsed.RoundStartUnix + 21600))
+                    .ToListAsync(cancellationToken);
+                var exact = candidates.FirstOrDefault(m => m.Rounds.Any(r => r.RoundNumber == parsed.Round
+                    && r.RoundStartUnix == parsed.RoundStartUnix));
+                var pair = exact ?? candidates.Where(m => !m.Rounds.Any(r => r.RoundNumber == parsed.Round)
+                    && m.Rounds.Any(r => parsed.Round == 2
+                        ? r.RoundNumber == 1 && r.RoundEndUnix <= parsed.RoundStartUnix && parsed.RoundStartUnix - r.RoundEndUnix <= 21600
+                        : r.RoundNumber == 2 && parsed.RoundEndUnix <= r.RoundStartUnix && r.RoundStartUnix - parsed.RoundEndUnix <= 21600))
+                    .OrderByDescending(m => m.Rounds.Max(r => r.RoundStartUnix)).FirstOrDefault();
+                var key = $"{parsed.ServerIp}|{parsed.ServerPort}|{parsed.ServerName}|{parsed.MapName}|{parsed.Round}|{parsed.RoundStartUnix}";
+                var mapId = pair?.ExternalMatchId ?? Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)))[..32];
+                var dto = OksiiStatsAdapter.Parse(payload, mapId);
+                return await IngestMatchCoreAsync(db, transaction, webhookOptions, skillRatingOptions,
+                    httpClientFactory, loggerFactory, scoreboardCache, dto, ingestOptions.Value.MatchGapHours, cancellationToken);
+            });
+        }
+        finally { IngestLock.Release(); }
+    }
+
+    private static async Task<IResult> IngestRosterAsync(HttpRequest request, IDbContextFactory<StatsDbContext> dbFactory,
+        IOptions<IngestOptions> ingestOptions, JsonElement payload, CancellationToken ct)
+    {
+        var auth = ValidateBearerToken(request, ingestOptions);
+        if (auth != null) return auth;
+        var ip = OksiiStatsAdapter.Text(payload, "server_ip"); var port = OksiiStatsAdapter.Text(payload, "server_port");
+        long timestamp;
+        try { timestamp = OksiiStatsAdapter.Number(payload, "timestamp"); }
+        catch (JsonException ex) { return Results.BadRequest(new { error = ex.Message }); }
+        if (ip.Length is 0 or > 64 || port.Length is 0 or > 16 || timestamp <= 0)
+            return Results.BadRequest(new { error = "Server address and timestamp are required" });
+        var json = payload.GetRawText();
+        var id = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json)));
+        await IngestLock.WaitAsync(ct);
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(ct);
+            if (!await db.RosterSnapshots.AnyAsync(s => s.Id == id, ct))
+            {
+                db.RosterSnapshots.Add(new RosterSnapshot { Id = id, ServerIp = ip, ServerPort = port, TimestampUnix = timestamp, PayloadJson = json });
+                await db.SaveChangesAsync(ct);
+            }
+            return Results.Ok();
+        }
+        finally { IngestLock.Release(); }
     }
 
     private static async Task<IResult> IngestMatchCoreAsync(
@@ -369,6 +465,7 @@ public static class IngestEndpoints
         ILoggerFactory loggerFactory,
         ScoreboardCache scoreboardCache,
         MatchIngestDto dto,
+        double matchGapHours,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(dto.MatchId))
@@ -456,7 +553,8 @@ public static class IngestEndpoints
 
         // Keep a compact fingerprint of the original DTO, before normalization.
         // Retried requests must not replace rows or apply ratings/webhooks again.
-        var fingerprint = "sha256:" + Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(dto)));
+        var fingerprint = "sha256:" + Convert.ToHexString(SHA256.HashData(dto.OksiiPayload is { } source
+            ? JsonSerializer.SerializeToUtf8Bytes(source) : JsonSerializer.SerializeToUtf8Bytes(dto)));
         if (existingRound?.RawJson == fingerprint)
         {
             return Results.Ok(new { matchId = match.ExternalMatchId, round = existingRound.RoundNumber,
@@ -490,17 +588,20 @@ public static class IngestEndpoints
                 // The Lua module retains obituary events through map_restart. Round 2's
                 // payload can therefore repeat every round 1 event with the same uptime
                 // timestamp. Exclude those duplicates before storing or counting streaks.
-                var round1Obituaries = await db.MatchObituaries
-                    .AsNoTracking()
-                    .Where(o => o.MatchRoundId == round1.Id)
-                    .Select(o => new { o.TimestampMs, o.TargetGuid, o.AttackerGuid, o.MeansOfDeath })
-                    .ToListAsync(cancellationToken);
-                var round1Events = round1Obituaries
-                    .Select(o => ObituaryKey(o.TimestampMs, o.TargetGuid, o.AttackerGuid, o.MeansOfDeath))
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                obituaries = obituaries
-                    .Where(o => !round1Events.Contains(ObituaryKey(o.Timestamp, o.Target, o.Attacker, o.MeansOfDeath)))
-                    .ToList();
+                if (!dto.OksiiPayload.HasValue)
+                {
+                    var round1Obituaries = await db.MatchObituaries
+                        .AsNoTracking()
+                        .Where(o => o.MatchRoundId == round1.Id)
+                        .Select(o => new { o.TimestampMs, o.TargetGuid, o.AttackerGuid, o.MeansOfDeath })
+                        .ToListAsync(cancellationToken);
+                    var round1Events = round1Obituaries
+                        .Select(o => ObituaryKey(o.TimestampMs, o.TargetGuid, o.AttackerGuid, o.MeansOfDeath))
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    obituaries = obituaries
+                        .Where(o => !round1Events.Contains(ObituaryKey(o.Timestamp, o.Target, o.Attacker, o.MeansOfDeath)))
+                        .ToList();
+                }
 
                 foreach (var p1 in round1.Sides.SelectMany(s => s.Players))
                 {
@@ -548,7 +649,8 @@ public static class IngestEndpoints
             out _);
 
         var canNormalizeRound2 = dto.Round == 2 && round1ByGuid.Count > 0;
-        var weaponStatsAreCumulative = canNormalizeRound2 && LooksCumulativeWeaponStats(players, round1ByGuid);
+        var oksii = dto.OksiiPayload.HasValue;
+        var weaponStatsAreCumulative = canNormalizeRound2 && (oksii || LooksCumulativeWeaponStats(players, round1ByGuid));
 
         var xpIsCumulative = canNormalizeRound2 && LooksCumulative(players
             .Where(p => !string.IsNullOrWhiteSpace(p.Guid) && round1ByGuid.ContainsKey(p.Guid!))
@@ -592,14 +694,38 @@ public static class IngestEndpoints
             RoundStartUnix = dto.RoundStartUnix,
             RoundEndUnix = dto.RoundEndUnix,
             IngestedAtUtc = DateTime.UtcNow,
-            RawJson = fingerprint
+            RawJson = fingerprint,
+            StatsSource = oksii ? "oksii" : "legacy",
+            SourcePayloadJson = dto.OksiiPayload?.GetRawText(),
         };
+
+        if (oksii && canNormalizeRound2)
+        {
+            xpIsCumulative = dmgGivenIsCumulative = dmgReceivedIsCumulative = teamDmgGivenIsCumulative
+                = teamDmgReceivedIsCumulative = gibsIsCumulative = selfKillsIsCumulative
+                = teamKillsIsCumulative = teamGibsIsCumulative = true;
+        }
+        if (dto.OksiiPayload is { } oksiiSource)
+        {
+            var metadata = OksiiStatsAdapter.Field(oksiiSource, "metadata");
+            match.SourceMatchId = OksiiStatsAdapter.Text(metadata, "matchID");
+            if (string.IsNullOrEmpty(match.SourceMatchId)) match.SourceMatchId = OksiiStatsAdapter.Text(OksiiStatsAdapter.Field(oksiiSource, "round_info"), "matchID");
+            if (match.SourceMatchId?.Length > 64) return Results.BadRequest(new { error = "matchID is too long" });
+            var sequence = 0;
+            foreach (var ev in OksiiStatsAdapter.Events(oksiiSource))
+            {
+                var label = OksiiStatsAdapter.Text(ev, "label"); var eventGroup = OksiiStatsAdapter.Text(ev, "group");
+                if (label.Length > 128 || eventGroup.Length > 64) return Results.BadRequest(new { error = "Event label or group is too long" });
+                round.Events.Add(new RoundEvent { Id = Guid.NewGuid(), Sequence = sequence++, Label = label, Group = eventGroup,
+                    LevelTime = OksiiStatsAdapter.Number(ev, "leveltime"), UnixTimeMs = OksiiStatsAdapter.Number(ev, "unixtime"), DataJson = ev.GetRawText() });
+            }
+        }
 
         // Persist overall match winner once round 2 is ingested.
         // Keep it null for matches without round 2.
         if (dto.Round == 2)
         {
-            match.Winner = MatchWinnerCalculator.DetermineWinner(round1ForWinner, round);
+            match.Winner = oksii && round1ForWinner == null ? null : MatchWinnerCalculator.DetermineWinner(round1ForWinner, round);
         }
 
         foreach (var teamGroup in groupedByTeam)
@@ -651,6 +777,10 @@ public static class IngestEndpoints
                     TeamKills = p1 is null ? p.TeamKills : Delta(teamKillsIsCumulative, p.TeamKills, p1.TeamKills),
                     TeamGibs = p1 is null ? p.TeamGibs : Delta(teamGibsIsCumulative, p.TeamGibs, p1.TeamGibs),
                 };
+
+                if (dto.OksiiPayload is { } playerSource)
+                    OksiiStatsAdapter.ApplyPlayer(player, playerSource,
+                        round1ForWinner?.Sides.SelectMany(s => s.Players).FirstOrDefault(p => p.Guid == player.Guid));
 
                 if (!string.IsNullOrWhiteSpace(player.Guid) && multiKillsByAttacker.TryGetValue(player.Guid, out var multiKills))
                 {
@@ -741,10 +871,17 @@ public static class IngestEndpoints
             db.Matches.Add(match);
         }
 
+        if (!oksii) CanonicalStats.AddLegacyEvents(round);
         db.MatchRounds.Add(round);
         await db.SaveChangesAsync(cancellationToken);
+        round.PayloadJson = CanonicalStats.Write(match, round);
+        var completedRoundTwo = dto.Round == 2 ? round : await RefreshOksiiRoundTwoAsync(db, match, round, cancellationToken);
+        var completedRoundOne = dto.Round == 1 ? round : round1ForWinner;
+        var firstCompletion = existingRound == null && completedRoundTwo != null
+            && ((!oksii && dto.Round == 2) || completedRoundOne != null);
+        await MatchSeriesBuilder.RebuildAsync(db, matchGapHours, cancellationToken, MatchSeriesBuilder.ServerKey(match));
 
-        if (dto.Round == 2 && existingRound is null)
+        if (firstCompletion)
         {
             var logger = loggerFactory.CreateLogger("PappaETStats.Server.Api.IngestEndpoints");
 
@@ -752,8 +889,8 @@ public static class IngestEndpoints
                 db,
                 logger,
                 match,
-                round1ForWinner,
-                round,
+                completedRoundOne,
+                completedRoundTwo!,
                 skillRatingOptions.Value,
                 cancellationToken);
         }
@@ -763,7 +900,7 @@ public static class IngestEndpoints
         await transaction.CommitAsync(cancellationToken);
         scoreboardCache.Invalidate();
 
-        if (dto.Round == 2 && existingRound is null)
+        if (firstCompletion)
         {
             var logger = loggerFactory.CreateLogger("PappaETStats.Server.Api.IngestEndpoints");
             await TrySendGameCompletedWebhookAsync(
@@ -771,12 +908,64 @@ public static class IngestEndpoints
                 webhookOptions.Value,
                 logger,
                 match,
-                round1ForWinner,
-                round,
+                completedRoundOne,
+                completedRoundTwo!,
                 CancellationToken.None);
         }
 
         return Results.Ok(new { matchId = match.ExternalMatchId, round = round.RoundNumber, matchDbId = match.Id, roundDbId = round.Id });
+    }
+
+    private static async Task<MatchRound?> RefreshOksiiRoundTwoAsync(StatsDbContext db, Match map, MatchRound round1, CancellationToken ct)
+    {
+        var round2 = await db.MatchRounds.Include(r => r.Events)
+            .Include(r => r.Sides).ThenInclude(s => s.Players).ThenInclude(p => p.WeaponStats)
+            .Include(r => r.Sides).ThenInclude(s => s.Players).ThenInclude(p => p.ClassStats)
+            .AsSplitQuery().FirstOrDefaultAsync(r => r.MatchId == map.Id && r.RoundNumber == 2 && r.StatsSource == "oksii", ct);
+        if (round2?.SourcePayloadJson == null) return null;
+        using var json = JsonDocument.Parse(round2.SourcePayloadJson);
+        var raw = OksiiStatsAdapter.Parse(json.RootElement, map.ExternalMatchId);
+        var priorPlayers = round1.Sides.SelectMany(s => s.Players).ToDictionary(p => p.Guid, StringComparer.OrdinalIgnoreCase);
+        foreach (var player in round2.Sides.SelectMany(s => s.Players))
+        {
+            var source = raw.Players!.Single(p => p.Guid == player.Guid);
+            priorPlayers.TryGetValue(player.Guid, out var prior);
+            player.Xp = Math.Max(0, source.Xp - (prior?.Xp ?? 0));
+            player.DamageGiven = Math.Max(0, source.DamageGiven - (prior?.DamageGiven ?? 0));
+            player.DamageReceived = Math.Max(0, source.DamageReceived - (prior?.DamageReceived ?? 0));
+            player.TeamDamageGiven = Math.Max(0, source.TeamDamageGiven - (prior?.TeamDamageGiven ?? 0));
+            player.TeamDamageReceived = Math.Max(0, source.TeamDamageReceived - (prior?.TeamDamageReceived ?? 0));
+            player.Gibs = Math.Max(0, source.Gibs - (prior?.Gibs ?? 0));
+            player.SelfKills = Math.Max(0, source.SelfKills - (prior?.SelfKills ?? 0));
+            player.TeamKills = Math.Max(0, source.TeamKills - (prior?.TeamKills ?? 0));
+            player.TeamGibs = Math.Max(0, source.TeamGibs - (prior?.TeamGibs ?? 0));
+            foreach (var weapon in player.WeaponStats)
+            {
+                var sourceWeapon = source.WeaponStats!.Single(w => w.Weapon == weapon.Weapon);
+                var previousWeapon = prior?.WeaponStats.SingleOrDefault(w => w.Weapon == weapon.Weapon);
+                weapon.Hits = Math.Max(0, sourceWeapon.Hits - (previousWeapon?.Hits ?? 0));
+                weapon.Atts = Math.Max(0, NormalizeCountToInt(sourceWeapon.Atts) - (previousWeapon?.Atts ?? 0));
+                weapon.Kills = Math.Max(0, sourceWeapon.Kills - (previousWeapon?.Kills ?? 0));
+                weapon.Deaths = Math.Max(0, sourceWeapon.Deaths - (previousWeapon?.Deaths ?? 0));
+                weapon.Headshots = Math.Max(0, sourceWeapon.Headshots - (previousWeapon?.Headshots ?? 0));
+            }
+            OksiiStatsAdapter.ApplyPlayer(player, json.RootElement, prior);
+        }
+        foreach (var side in round2.Sides)
+        {
+            side.TotalXp = side.Players.Sum(p => p.Xp);
+            side.TotalDamageGiven = side.Players.Sum(p => (long)p.DamageGiven);
+            side.TotalDamageReceived = side.Players.Sum(p => (long)p.DamageReceived);
+            side.TotalTeamDamageGiven = side.Players.Sum(p => (long)p.TeamDamageGiven);
+            side.TotalTeamDamageReceived = side.Players.Sum(p => (long)p.TeamDamageReceived);
+            side.TotalGibs = side.Players.Sum(p => (long)p.Gibs);
+            side.TotalSelfKills = side.Players.Sum(p => (long)p.SelfKills);
+            side.TotalTeamKills = side.Players.Sum(p => (long)p.TeamKills);
+            side.TotalTeamGibs = side.Players.Sum(p => (long)p.TeamGibs);
+        }
+        map.Winner = MatchWinnerCalculator.DetermineWinner(round1, round2);
+        round2.PayloadJson = CanonicalStats.Write(map, round2);
+        return round2;
     }
 
     private static async Task TryUpdateSkillRatingsForCompletedMatchAsync(

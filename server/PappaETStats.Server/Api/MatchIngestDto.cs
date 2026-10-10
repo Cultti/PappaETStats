@@ -1,9 +1,12 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace PappaETStats.Server.Api;
 
 public sealed class MatchIngestDto
 {
+    // Internal adapter context; never accepted from the legacy wire format.
+    [JsonIgnore] public JsonElement? OksiiPayload { get; init; }
     [JsonPropertyName("roundStart")]
     public long RoundStart { get; init; }
 

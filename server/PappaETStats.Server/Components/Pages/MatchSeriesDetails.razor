@@ -1,0 +1,125 @@
+@page "/match-series/{Id:guid}"
+@using Microsoft.EntityFrameworkCore
+@using PappaETStats.Server.Data
+@using PappaETStats.Server.Domain
+@using PappaETStats.Server.Components.Shared
+@inject IDbContextFactory<StatsDbContext> DbFactory
+@inject Microsoft.Extensions.Options.IOptions<PappaETStats.Server.Options.IngestOptions> IngestOptions
+
+<PageTitle>Match statistics</PageTitle>
+@if (_loading)
+{
+    <MudText>Loading…</MudText>
+}
+else if (_series == null)
+{
+    <MudAlert Severity="Severity.Info">Match not found.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="flex-wrap:wrap;gap:1rem">
+            <div>
+                <MudText Typo="Typo.h4">Match · @_maps.Count maps</MudText>
+                <MudText Typo="Typo.body1" Class="mt-2"><EtColoredText Text="@(_maps.FirstOrDefault()?.ServerName ?? "")" /></MudText>
+                <MudText Typo="Typo.body2" Class="mt-1">@PlayedAt · @(Completed ? "Completed" : "More maps may follow")</MudText>
+            </div>
+            <MudText Typo="Typo.h5">Team 1 @Wins(1) – @Wins(2) Team 2</MudText>
+        </MudStack>
+    </MudPaper>
+
+    <nav class="match-scope-options" aria-label="Statistics scope">
+        <a class="match-scope-option" href="@MatchUrl" aria-current="@(Map == null ? "page" : null)">
+            <span class="match-scope-title">Match totals</span>
+            <span class="match-scope-detail">All @_maps.Count maps · combined statistics &amp; awards</span>
+        </a>
+        @foreach (var map in _maps)
+        {
+            <a class="match-scope-option" href="@MapUrl(map.Id)" aria-current="@(Map == map.Id ? "page" : null)" data-map-id="@map.Id">
+                <span class="match-scope-title">@map.MapNumber. @map.MapName</span>
+                <span class="match-scope-detail">@Result(map)</span>
+                <span class="match-scope-detail">@(map.Rounds.FirstOrDefault(r => r.RoundNumber == 1)?.NextTimeLimit ?? "—") / @(map.Rounds.FirstOrDefault(r => r.RoundNumber == 2)?.NextTimeLimit ?? "—")</span>
+            </a>
+        }
+    </nav>
+
+    @if (Map.HasValue && _selectedMap == null)
+    {
+        <MudAlert Class="mt-4" Severity="Severity.Warning">This map is not part of this match. <MudLink Href="@MatchUrl">Show match totals</MudLink></MudAlert>
+    }
+    else
+    {
+        @if (_selectedMap != null)
+        {
+            <MudStack Row="true" Class="mt-4" Spacing="2" Style="flex-wrap:wrap">
+                <MudButton Href="@MapUrl(_selectedMap.Id)" Variant="@(Round == null ? Variant.Filled : Variant.Outlined)" Color="Color.Primary">Map totals</MudButton>
+                @foreach (var round in _selectedMap.Rounds.OrderBy(r => r.RoundNumber))
+                {
+                    <MudButton Href="@MapUrl(_selectedMap.Id, round.RoundNumber)" Variant="@(Round == round.RoundNumber ? Variant.Filled : Variant.Outlined)" Color="Color.Primary">Round @round.RoundNumber</MudButton>
+                }
+                <MudButton Href="@($"/matches/{_selectedMap.Id}")" Variant="Variant.Text">Map details</MudButton>
+            </MudStack>
+        }
+        @if (Round.HasValue && _selectedMap != null && _selectedRound == null)
+        {
+            <MudAlert Class="mt-4" Severity="Severity.Info">That round is not available. Select map totals or an available round.</MudAlert>
+        }
+        else
+        {
+            <MatchStatisticsView MapIds="_scopeMapIds" RoundId="@(_selectedRound?.Id)" Title="@StatsTitle" AwardsTitle="@AwardsTitle" />
+            @if (_selectedMap != null)
+            {
+                @foreach (var round in _selectedMap.Rounds.Where(r => _selectedRound == null || r.Id == _selectedRound.Id).OrderBy(r => r.RoundNumber))
+                {
+                    <MudExpansionPanels Class="mt-4" Elevation="1">
+                        <MudExpansionPanel Text="@($"Round {round.RoundNumber} · timeline")">
+                            <RoundTimeline RoundId="round.Id" RoundStartMs="round.RoundStartMs" />
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
+            }
+        }
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery(Name = "map")] public Guid? Map { get; set; }
+    [SupplyParameterFromQuery(Name = "round")] public int? Round { get; set; }
+    private bool _loading = true;
+    private MatchSeries? _series;
+    private List<Match> _maps = [];
+    private Match? _selectedMap;
+    private MatchRound? _selectedRound;
+    private List<Guid> _scopeMapIds = [];
+    private string MatchUrl => $"/match-series/{Id}";
+    private string MapUrl(Guid id, int? round = null) => $"{MatchUrl}?map={id}" + (round.HasValue ? $"&round={round}" : "");
+    private string StatsTitle => _selectedMap == null ? "Match statistics" : _selectedRound == null
+        ? $"{_selectedMap.MapName} · map statistics" : $"{_selectedMap.MapName} · round {_selectedRound.RoundNumber} statistics";
+    private string AwardsTitle => _selectedMap == null ? "Match awards" : _selectedRound == null ? "Map awards" : "Round awards";
+    private bool Completed => _series!.EndedAtUnix.HasValue
+        || DateTimeOffset.UtcNow.ToUnixTimeSeconds() - _series.LastPlayedAtUnix > IngestOptions.Value.MatchGapHours * 3600;
+    private string PlayedAt => _series!.StartedAtUnix > 0
+        ? TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(_series.StartedAtUnix),
+            TimeZoneInfo.FindSystemTimeZoneById(OperatingSystem.IsWindows() ? "FLE Standard Time" : "Europe/Helsinki")).ToString("d.M.yyyy HH:mm") : "Time unavailable";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _series = await db.MatchSeries.AsNoTracking().FirstOrDefaultAsync(s => s.Id == Id);
+        _maps = await db.Matches.AsNoTracking().Include(m => m.Rounds).Where(m => m.SeriesId == Id).OrderBy(m => m.MapNumber).ToListAsync();
+        _selectedMap = Map.HasValue ? _maps.FirstOrDefault(m => m.Id == Map.Value) : null;
+        _selectedRound = Round.HasValue ? _selectedMap?.Rounds.FirstOrDefault(r => r.RoundNumber == Round.Value) : null;
+        _scopeMapIds = _selectedMap == null ? _maps.Select(m => m.Id).ToList() : [_selectedMap.Id];
+        _loading = false;
+    }
+
+    private int Wins(int team) => _maps.Count(m => m.Winner is MatchWinner.Team1 or MatchWinner.Team2
+        && ((int)m.Winner == m.SeriesTeam1Faction ? 1 : 2) == team);
+    private static string Result(Match map) => map.Winner switch
+    {
+        MatchWinner.Team1 or MatchWinner.Team2 => $"Team {((int)map.Winner == map.SeriesTeam1Faction ? 1 : 2)} won",
+        MatchWinner.Draw => "Draw", _ => "Waiting for both rounds"
+    };
+}

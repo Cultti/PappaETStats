@@ -30,6 +30,11 @@ public sealed class MatchRound
 
     public string? RawJson { get; set; }
 
+    [MaxLength(16)] public string StatsSource { get; set; } = "legacy";
+    public string? PayloadJson { get; set; }
+    public string? SourcePayloadJson { get; set; }
+    public List<RoundEvent> Events { get; set; } = [];
+
     public List<MatchSide> Sides { get; set; } = new();
     public List<MatchObituary> Obituaries { get; set; } = new();
 }

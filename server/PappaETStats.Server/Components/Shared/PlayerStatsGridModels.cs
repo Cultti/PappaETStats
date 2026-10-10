@@ -19,6 +19,9 @@ public sealed class PlayerStatsGridRow
     public int Games { get; init; }
 
     public double TimePlayedPercent { get; init; }
+    public int? Assists { get; init; }
+    public double? AliveSeconds { get; init; }
+    public double? EngagedSeconds { get; init; }
 
     public int DamageGiven { get; init; }
     public int DamageReceived { get; init; }

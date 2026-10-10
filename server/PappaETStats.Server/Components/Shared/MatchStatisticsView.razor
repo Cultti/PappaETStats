@@ -1,0 +1,60 @@
+@using Microsoft.EntityFrameworkCore
+@using PappaETStats.Server.Data
+@using PappaETStats.Server.Services
+@inject IDbContextFactory<StatsDbContext> DbFactory
+
+@if (_loading)
+{
+    <MudText Class="mt-4">Loading statistics…</MudText>
+}
+else if (_result.Players.Count == 0)
+{
+    <MudAlert Class="mt-4" Severity="Severity.Info">No player statistics recorded yet.</MudAlert>
+}
+else
+{
+    <section class="mt-4" aria-label="@Title">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-3">
+            <MudText Typo="Typo.h5">@Title</MudText>
+            <MudSwitch T="bool" Label="Show teams" Color="Color.Primary" @bind-Value="_showTeams" />
+        </MudStack>
+        @if (_showTeams)
+        {
+            @foreach (var team in new[] { 1, 2, 0 })
+            {
+                var players = _result.Players.Where(p => p.Team == team).Select(p => p.Grid).ToList();
+                @if (players.Count > 0)
+                {
+                    <MudPaper Class="pa-4 mb-4" Elevation="1">
+                        <MudText Typo="Typo.h6" Class="mb-2">@(team == 0 ? "Unassigned" : $"Team {team}")</MudText>
+                        <PlayerStatsGrid Players="players" ShowGames="@(MapIds.Count > 1)" ShowAdvanced="true" />
+                    </MudPaper>
+                }
+            }
+        }
+        else
+        {
+            <MudPaper Class="pa-4" Elevation="1"><PlayerStatsGrid Players="@(_result.Players.Select(p => p.Grid).ToList())" ShowGames="@(MapIds.Count > 1)" ShowAdvanced="true" /></MudPaper>
+        }
+        <AdvancedStatsSummary MapIds="MapIds" RoundId="RoundId" />
+        <MatchAwardsPanel Awards="_result.Awards" Title="@AwardsTitle" />
+    </section>
+}
+
+@code {
+    [Parameter] public IReadOnlyCollection<Guid> MapIds { get; set; } = [];
+    [Parameter] public Guid? RoundId { get; set; }
+    [Parameter] public string Title { get; set; } = "Match statistics";
+    [Parameter] public string AwardsTitle { get; set; } = "Match awards";
+    private bool _loading = true;
+    private bool _showTeams = true;
+    private MatchStatsResult _result = new([], []);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _result = await MatchStatistics.LoadAsync(db, MapIds, RoundId);
+        _loading = false;
+    }
+}

@@ -206,6 +206,8 @@ else
                             GetTimeText="@(m => m.TimeText)" />
         }
     </MudPaper>
+    <AdvancedStatsSummary PlayerGuid="@PlayerGuid" />
+    <MatchSeriesList PlayerGuid="@PlayerGuid" />
 }
 
 @code {
@@ -483,13 +485,6 @@ else
             static WeaponStatRow FromRound(WeaponStatRoundRow r)
                 => new(r.Weapon, r.Hits, r.Atts, r.Kills, r.Deaths, r.Headshots);
 
-            static bool NonDecreasing(WeaponStatRoundRow prev, WeaponStatRoundRow next)
-                => next.Hits >= prev.Hits
-                   && next.Atts >= prev.Atts
-                   && next.Kills >= prev.Kills
-                   && next.Deaths >= prev.Deaths
-                   && next.Headshots >= prev.Headshots;
-
             var overallWeaponByWeapon = new Dictionary<int, WeaponStatRow>();
 
             foreach (var matchGroup in weaponRoundRows.GroupBy(r => r.MatchId))
@@ -505,50 +500,12 @@ else
                     continue;
                 }
 
-                // Heuristic: if stats are mostly non-decreasing between rounds, treat them as cumulative.
-                var seemsCumulative = false;
-                if (roundGroups.Count >= 2)
-                {
-                    var byRoundWeapon = matchGroup.ToDictionary(x => (x.RoundNumber, x.Weapon), x => x);
-
-                    var checks = 0;
-                    var ok = 0;
-                    for (var i = 1; i < roundGroups.Count; i++)
-                    {
-                        var prevRound = roundGroups[i - 1].Round;
-                        var nextRound = roundGroups[i].Round;
-                        foreach (var next in roundGroups[i].Rows)
-                        {
-                            if (byRoundWeapon.TryGetValue((prevRound, next.Weapon), out var prev))
-                            {
-                                checks++;
-                                if (NonDecreasing(prev, next))
-                                {
-                                    ok++;
-                                }
-                            }
-                        }
-                    }
-
-                    seemsCumulative = checks > 0 && (double)ok / checks >= 0.80;
-                }
-
                 Dictionary<int, WeaponStatRow> perMatch;
-                if (seemsCumulative)
-                {
-                    var latest = roundGroups[^1].Rows;
-                    perMatch = latest
-                        .Select(FromRound)
-                        .GroupBy(x => x.Weapon)
-                        .ToDictionary(g => g.Key, g => g.Aggregate((acc, x) => Add(acc, x)));
-                }
-                else
-                {
+
                     perMatch = matchGroup
                         .Select(FromRound)
                         .GroupBy(x => x.Weapon)
                         .ToDictionary(g => g.Key, g => g.Aggregate((acc, x) => Add(acc, x)));
-                }
 
                 foreach (var kv in perMatch)
                 {

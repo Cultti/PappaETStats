@@ -9,6 +9,9 @@ public sealed class StatsDbContext(DbContextOptions<StatsDbContext> options) : D
     public DbSet<Player> Players => Set<Player>();
     public DbSet<LastReadyUp> LastReadyUps => Set<LastReadyUp>();
     public DbSet<Match> Matches => Set<Match>();
+    public DbSet<MatchSeries> MatchSeries => Set<MatchSeries>();
+    public DbSet<RoundEvent> RoundEvents => Set<RoundEvent>();
+    public DbSet<RosterSnapshot> RosterSnapshots => Set<RosterSnapshot>();
     public DbSet<MatchRound> MatchRounds => Set<MatchRound>();
     public DbSet<MatchSide> MatchSides => Set<MatchSide>();
     public DbSet<MatchPlayer> MatchPlayers => Set<MatchPlayer>();
@@ -38,6 +41,33 @@ public sealed class StatsDbContext(DbContextOptions<StatsDbContext> options) : D
         modelBuilder.Entity<Match>()
             .HasIndex(m => m.ExternalMatchId)
             .IsUnique();
+
+        modelBuilder.Entity<MatchSeries>().HasIndex(s => new { s.ServerKey, s.LastPlayedAtUnix });
+        modelBuilder.Entity<MatchSeries>().HasMany(s => s.Maps).WithOne(m => m.Series)
+            .HasForeignKey(m => m.SeriesId).OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<MatchRound>().HasMany(r => r.Events).WithOne(e => e.MatchRound)
+            .HasForeignKey(e => e.MatchRoundId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<RoundEvent>().HasIndex(e => new { e.MatchRoundId, e.Sequence }).IsUnique();
+        modelBuilder.Entity<RoundEvent>().HasIndex(e => e.Label);
+        modelBuilder.Entity<MatchSeries>().Property(s => s.ServerKey).HasColumnType("varchar(512)");
+        modelBuilder.Entity<MatchSeries>().Property(s => s.StartedAtUnix).HasColumnType("bigint");
+        modelBuilder.Entity<MatchSeries>().Property(s => s.LastPlayedAtUnix).HasColumnType("bigint");
+        modelBuilder.Entity<MatchSeries>().Property(s => s.EndedAtUnix).HasColumnType("bigint");
+        modelBuilder.Entity<Match>().Property(m => m.SeriesTeam1Faction).HasDefaultValue(1);
+        modelBuilder.Entity<MatchRound>().Property(r => r.StatsSource).HasDefaultValue("legacy");
+        modelBuilder.Entity<MatchRound>().Property(r => r.PayloadJson).HasColumnType("longtext");
+        modelBuilder.Entity<MatchRound>().Property(r => r.SourcePayloadJson).HasColumnType("longtext");
+        modelBuilder.Entity<MatchPlayer>().Property(p => p.DetailsJson).HasColumnType("longtext");
+        modelBuilder.Entity<RoundEvent>().Property(e => e.DataJson).HasColumnType("longtext");
+        modelBuilder.Entity<RoundEvent>().Property(e => e.Label).HasColumnType("varchar(128)");
+        modelBuilder.Entity<RoundEvent>().Property(e => e.Group).HasColumnType("varchar(64)");
+        modelBuilder.Entity<RoundEvent>().Property(e => e.LevelTime).HasColumnType("bigint");
+        modelBuilder.Entity<RoundEvent>().Property(e => e.UnixTimeMs).HasColumnType("bigint");
+        modelBuilder.Entity<RosterSnapshot>().Property(s => s.Id).HasColumnType("varchar(64)");
+        modelBuilder.Entity<RosterSnapshot>().Property(s => s.TimestampUnix).HasColumnType("bigint");
+        modelBuilder.Entity<RosterSnapshot>().Property(s => s.PayloadJson).HasColumnType("longtext");
+        foreach (var name in new[] { "DistanceMeters", "AliveSeconds", "EngagedSeconds", "DownedSeconds" })
+            modelBuilder.Entity<MatchPlayer>().Property(name).HasColumnType("double");
 
         modelBuilder.Entity<LastReadyUp>().HasKey(r => r.EventId);
         modelBuilder.Entity<LastReadyUp>().Property(r => r.EventId).HasColumnType("varchar(64)");

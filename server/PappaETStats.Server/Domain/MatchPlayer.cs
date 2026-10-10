@@ -33,6 +33,21 @@ public sealed class MatchPlayer
     public int TeamKills { get; set; }
     public int TeamGibs { get; set; }
 
+    public int? Assists { get; set; }
+    public double? DistanceMeters { get; set; }
+    public int? SpawnCount { get; set; }
+    public double? AliveSeconds { get; set; }
+    public double? EngagedSeconds { get; set; }
+    public double? DownedSeconds { get; set; }
+    public int? ObjectivesPlanted { get; set; }
+    public int? ObjectivesDefused { get; set; }
+    public int? ObjectivesSecured { get; set; }
+    public int? ObjectivesReturned { get; set; }
+    public int? ObjectivesDestroyed { get; set; }
+    public int? ObjectivesRepaired { get; set; }
+    // Retain all optional and future stats, including stance, speed and vehicles.
+    public string? DetailsJson { get; set; }
+
     public int MultiKills2 { get; set; }
     public int MultiKills3 { get; set; }
     public int MultiKills4 { get; set; }

@@ -2,6 +2,12 @@
 
 Monorepo for collecting **Enemy Territory: Legacy** match data and browsing it via a **.NET 10 Blazor** web UI.
 
+For Oksii stats ingestion, match grouping and deployment instructions, see [the migration guide](server/OKSII-MIGRATION.md).
+
+Use [`pappaready.lua`](et-server/pappaready.lua) alongside Oksii's `stats.lua` to
+keep last-ready-up reporting. It uses the existing API key file and server ID;
+replace `pappastats.lua` with this script in the ET server's `lua_modules` list.
+
 ## Folders
 
 - `et-server/` – ET: Legacy **Lua** scripts that run on the game server and collect match events/stats.

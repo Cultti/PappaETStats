@@ -15,6 +15,10 @@ else
 {
     <MudPaper Class="pa-4" Elevation="1">
         <MudText Typo="Typo.h4">@_match.MapName <MudText Typo="Typo.subtitle1" Inline="true">(@_match.ExternalMatchId)</MudText></MudText>
+        @if (_match.SeriesId.HasValue)
+        {
+            <MudLink Href="@($"/match-series/{_match.SeriesId}")">Match overview · map @_match.MapNumber</MudLink>
+        }
 
         <MudStack Spacing="1" Class="mt-2">
             <MudText Typo="Typo.body1"><strong>Server:</strong> <EtColoredText Text="@_match.ServerName" /></MudText>
@@ -45,14 +49,7 @@ else
 
     <MudTabs Class="mt-6" Rounded="true" ApplyEffectsToContainer="true" Elevation="1">
         <MudTabPanel Text="Overall">
-            @if (_round2 is null)
-            {
-                <MudText Typo="Typo.body2">No round 2 ingested yet.</MudText>
-            }
-            else
-            {
-                @OverallContent(_match, _round2)
-            }
+            <MatchStatisticsView MapIds="@(new[] { Id })" Title="Map statistics" AwardsTitle="Map awards" />
         </MudTabPanel>
 
         <MudTabPanel Text="Round 1">
@@ -87,10 +84,6 @@ else
     private MatchRound? _round1;
     private MatchRound? _round2;
 
-    private bool _round2WeaponStatsLookCumulative;
-
-    private Dictionary<string, Dictionary<int, WeaponStatView>> _round1WeaponStatsByGuid = new(StringComparer.OrdinalIgnoreCase);
-
     protected override async Task OnParametersSetAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
@@ -101,6 +94,8 @@ else
             .Select(m => new
             {
                 m.Id,
+                m.SeriesId,
+                m.MapNumber,
                 m.ExternalMatchId,
                 m.MapName,
                 m.Config,
@@ -119,7 +114,6 @@ else
             _match = null;
             _round1 = null;
             _round2 = null;
-            _round1WeaponStatsByGuid = new(StringComparer.OrdinalIgnoreCase);
             return;
         }
 
@@ -226,6 +220,8 @@ else
         _match = new Match
         {
             Id = matchInfo.Id,
+            SeriesId = matchInfo.SeriesId,
+            MapNumber = matchInfo.MapNumber,
             ExternalMatchId = matchInfo.ExternalMatchId,
             MapName = matchInfo.MapName,
             Config = matchInfo.Config,
@@ -241,69 +237,6 @@ else
 
         _round1 = rounds.FirstOrDefault(r => r.RoundNumber == 1);
         _round2 = rounds.FirstOrDefault(r => r.RoundNumber == 2);
-
-        _round1WeaponStatsByGuid = BuildWeaponStatsByGuid(_round1);
-        _round2WeaponStatsLookCumulative = LooksCumulativeWeaponStats(_round1WeaponStatsByGuid, _round2);
-    }
-
-    private static bool LooksCumulativeWeaponStats(
-        IReadOnlyDictionary<string, Dictionary<int, WeaponStatView>> round1ByGuid,
-        MatchRound? round2)
-    {
-        if (round2 is null || round1ByGuid.Count == 0)
-        {
-            return false;
-        }
-
-        var total = 0;
-        var nonNeg = 0;
-        var positive = 0;
-
-        foreach (var p2 in round2.Sides.SelectMany(s => s.Players))
-        {
-            if (string.IsNullOrWhiteSpace(p2.Guid))
-            {
-                continue;
-            }
-
-            if (!round1ByGuid.TryGetValue(p2.Guid, out var r1Weapons))
-            {
-                continue;
-            }
-
-            foreach (var w2 in p2.WeaponStats)
-            {
-                if (!r1Weapons.TryGetValue(w2.Weapon, out var w1))
-                {
-                    continue;
-                }
-
-                total++;
-
-                var hitsDiff = w2.Hits - w1.Hits;
-                var attsDiff = w2.Atts - w1.Atts;
-                var killsDiff = w2.Kills - w1.Kills;
-                var deathsDiff = w2.Deaths - w1.Deaths;
-                var hsDiff = w2.Headshots - w1.Headshots;
-
-                if (hitsDiff >= 0 && attsDiff >= 0 && killsDiff >= 0 && deathsDiff >= 0 && hsDiff >= 0)
-                {
-                    nonNeg++;
-                }
-
-                if (hitsDiff > 0 || attsDiff > 0 || killsDiff > 0 || deathsDiff > 0 || hsDiff > 0)
-                {
-                    positive++;
-                }
-            }
-        }
-
-        if (total == 0)
-        {
-            return false;
-        }
-
-        return positive > 0 && (double)nonNeg / total >= 0.80;
     }
 
     private static double AccuracyPct(int hits, int atts) => atts <= 0 ? 0 : 100.0 * hits / atts;
@@ -557,10 +490,11 @@ else
                 showWinner: side.IsWinner,
                 playerCount: side.PlayerCount,
                 players: side.Players,
-                weaponStatsForPlayer: (p) => WeaponStatsForPlayer(round, p, subtractRound1: round.RoundNumber == 2 && _round2WeaponStatsLookCumulative))
+                weaponStatsForPlayer: (p) => WeaponStatsForPlayer(p))
         }
 
-        @ObituariesPanel(round)
+        <AdvancedStatsSummary RoundId="round.Id" />
+        <RoundTimeline RoundId="round.Id" RoundStartMs="round.RoundStartMs" />
     </div>;
 
     private RenderFragment ObituariesPanel(MatchRound round) => @<MudPaper Class="pa-4" Elevation="1">
@@ -645,7 +579,7 @@ else
                 showWinner: winnerOverallTeamId is not null && winnerOverallTeamId.Value == side.OverallTeamId,
                 playerCount: side.PlayerCount,
                 players: side.Players,
-                weaponStatsForPlayer: (p) => WeaponStatsForPlayer(round2, p, subtractRound1: false))
+                weaponStatsForPlayer: (p) => WeaponStatsForPlayer(p))
         }
     </div>;
 
@@ -960,49 +894,7 @@ else
             .ToList();
     }
 
-    private Dictionary<string, Dictionary<int, WeaponStatView>> BuildWeaponStatsByGuid(MatchRound? round)
-    {
-        var dict = new Dictionary<string, Dictionary<int, WeaponStatView>>(StringComparer.OrdinalIgnoreCase);
-        if (round is null)
-        {
-            return dict;
-        }
-
-        foreach (var p in round.Sides.SelectMany(s => s.Players))
-        {
-            if (string.IsNullOrWhiteSpace(p.Guid))
-            {
-                continue;
-            }
-
-            if (!dict.TryGetValue(p.Guid, out var byWeapon))
-            {
-                byWeapon = new Dictionary<int, WeaponStatView>();
-                dict[p.Guid] = byWeapon;
-            }
-
-            foreach (var ws in p.WeaponStats)
-            {
-                if (!byWeapon.TryGetValue(ws.Weapon, out var existing))
-                {
-                    existing = new WeaponStatView(ws.Weapon, 0, 0, 0, 0, 0);
-                }
-
-                byWeapon[ws.Weapon] = existing with
-                {
-                    Hits = existing.Hits + ws.Hits,
-                    Atts = existing.Atts + ws.Atts,
-                    Kills = existing.Kills + ws.Kills,
-                    Deaths = existing.Deaths + ws.Deaths,
-                    Headshots = existing.Headshots + ws.Headshots,
-                };
-            }
-        }
-
-        return dict;
-    }
-
-    private IEnumerable<WeaponStatView> WeaponStatsForPlayer(MatchRound round, MatchPlayer player, bool subtractRound1)
+    private static IEnumerable<WeaponStatView> WeaponStatsForPlayer(MatchPlayer player)
     {
         var baseStats = player.WeaponStats
             .GroupBy(ws => ws.Weapon)
@@ -1015,39 +907,9 @@ else
                     g.Sum(x => x.Kills),
                     g.Sum(x => x.Deaths),
                     g.Sum(x => x.Headshots)));
-
-        if (!subtractRound1 || round.RoundNumber != 2 || string.IsNullOrWhiteSpace(player.Guid))
-        {
-            return baseStats.Values;
-        }
-
-        if (!_round1WeaponStatsByGuid.TryGetValue(player.Guid, out var round1ByWeapon))
-        {
-            return baseStats.Values;
-        }
-
-        var result = new List<WeaponStatView>(baseStats.Count);
-        foreach (var kv in baseStats)
-        {
-            var w = kv.Key;
-            var s2 = kv.Value;
-            if (!round1ByWeapon.TryGetValue(w, out var s1))
-            {
-                result.Add(s2);
-                continue;
-            }
-
-            result.Add(new WeaponStatView(
-                w,
-                Math.Max(0, s2.Hits - s1.Hits),
-                Math.Max(0, s2.Atts - s1.Atts),
-                Math.Max(0, s2.Kills - s1.Kills),
-                Math.Max(0, s2.Deaths - s1.Deaths),
-                Math.Max(0, s2.Headshots - s1.Headshots)));
-        }
-
-        return result.Where(ws => ws.Atts != 0 || ws.Hits != 0 || ws.Kills != 0 || ws.Deaths != 0 || ws.Headshots != 0);
+        return baseStats.Values;
     }
+
 
     private static int? OverallWinnerTeamId(Match match)
     {

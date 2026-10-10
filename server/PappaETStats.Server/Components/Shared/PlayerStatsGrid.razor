@@ -29,6 +29,11 @@
         }
         <col style="width: var(--pappa-col-5);" />
         <col style="width: var(--pappa-col-2);" />
+        @if (ShowAdvanced)
+        {
+            <col style="width: var(--pappa-col-2);" />
+            <col style="width: var(--pappa-col-5);" />
+        }
     </ColGroup>
 
     <Columns>
@@ -54,7 +59,7 @@
 
         @if (ShowGames)
         {
-            <TemplateColumn T="PlayerStatsGridRow" Title="Games" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
+            <TemplateColumn T="PlayerStatsGridRow" Title="Maps" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
                 <CellTemplate>@context.Item.Games</CellTemplate>
                 <FooterTemplate>
                     <div><strong>@Players.Sum(p => p.Games)</strong></div>
@@ -65,8 +70,8 @@
         <TemplateColumn T="PlayerStatsGridRow" Title="K/D" HeaderClass="pappa-col-num pappa-col-kdr" CellClass="pappa-col-num pappa-col-kdr">
             <CellTemplate>
                 @{
-                    var kills = context.Item.WeaponStats.Sum(s => s.Kills);
-                    var deaths = context.Item.WeaponStats.Sum(s => s.Deaths);
+                    var kills = context.Item.WeaponStats.Where(s => s.Weapon != 27).Sum(s => s.Kills);
+                    var deaths = context.Item.WeaponStats.Where(s => s.Weapon != 27).Sum(s => s.Deaths);
                     var kdr = deaths <= 0 ? kills : (double)kills / deaths;
                 }
                 @kdr.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
@@ -79,14 +84,14 @@
         </TemplateColumn>
 
         <TemplateColumn T="PlayerStatsGridRow" Title="Kills" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
-            <CellTemplate>@context.Item.WeaponStats.Sum(s => s.Kills)</CellTemplate>
+            <CellTemplate>@context.Item.WeaponStats.Where(s => s.Weapon != 27).Sum(s => s.Kills)</CellTemplate>
             <FooterTemplate>
                 <div><strong>@TotalKills</strong></div>
             </FooterTemplate>
         </TemplateColumn>
 
         <TemplateColumn T="PlayerStatsGridRow" Title="Deaths" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
-            <CellTemplate>@context.Item.WeaponStats.Sum(s => s.Deaths)</CellTemplate>
+            <CellTemplate>@context.Item.WeaponStats.Where(s => s.Weapon != 27).Sum(s => s.Deaths)</CellTemplate>
             <FooterTemplate>
                 <div><strong>@TotalDeaths</strong></div>
             </FooterTemplate>
@@ -105,7 +110,7 @@
         </PropertyColumn>
 
         <TemplateColumn T="PlayerStatsGridRow" Title="HS" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
-            <CellTemplate>@context.Item.WeaponStats.Sum(s => s.Headshots)</CellTemplate>
+            <CellTemplate>@context.Item.WeaponStats.Where(s => s.Weapon != 27).Sum(s => s.Headshots)</CellTemplate>
             <FooterTemplate>
                 <div><strong>@TotalHeadshots</strong></div>
             </FooterTemplate>
@@ -136,6 +141,17 @@
                 <div><strong>@TotalRevives</strong></div>
             </FooterTemplate>
         </TemplateColumn>
+        @if (ShowAdvanced)
+        {
+            <TemplateColumn T="PlayerStatsGridRow" Title="Assists" HeaderClass="pappa-col-num pappa-col-2" CellClass="pappa-col-num pappa-col-2">
+                <CellTemplate>@(context.Item.Assists?.ToString() ?? "—")</CellTemplate>
+                <FooterTemplate><strong>@(Players.Any(p => p.Assists.HasValue) ? Players.Sum(p => p.Assists ?? 0).ToString() : "—")</strong></FooterTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="PlayerStatsGridRow" Title="Activity" HeaderClass="pappa-col-num pappa-col-5" CellClass="pappa-col-num pappa-col-5">
+                <CellTemplate>@Activity(context.Item)</CellTemplate>
+                <FooterTemplate><strong>@TeamActivity</strong></FooterTemplate>
+            </TemplateColumn>
+        }
     </Columns>
 
     <ChildRowContent>
@@ -240,9 +256,15 @@
     [Parameter]
     public bool ShowTeamStats { get; set; } = true;
 
-    private int TotalKills => Players.Sum(p => p.WeaponStats.Sum(s => s.Kills));
-    private int TotalDeaths => Players.Sum(p => p.WeaponStats.Sum(s => s.Deaths));
-    private int TotalHeadshots => Players.Sum(p => p.WeaponStats.Sum(s => s.Headshots));
+    [Parameter] public bool ShowAdvanced { get; set; }
+    private static string Activity(PlayerStatsGridRow p) => p.AliveSeconds > 0 && p.EngagedSeconds.HasValue
+        ? (100 * p.EngagedSeconds.Value / p.AliveSeconds.Value).ToString("N1", System.Globalization.CultureInfo.InvariantCulture) + "%" : "—";
+    private string TeamActivity => Players.Sum(p => p.AliveSeconds ?? 0) > 0 && Players.Any(p => p.EngagedSeconds.HasValue)
+        ? (100 * Players.Sum(p => p.EngagedSeconds ?? 0) / Players.Sum(p => p.AliveSeconds ?? 0)).ToString("N1", System.Globalization.CultureInfo.InvariantCulture) + "%" : "—";
+
+    private int TotalKills => Players.Sum(p => p.WeaponStats.Where(s => s.Weapon != 27).Sum(s => s.Kills));
+    private int TotalDeaths => Players.Sum(p => p.WeaponStats.Where(s => s.Weapon != 27).Sum(s => s.Deaths));
+    private int TotalHeadshots => Players.Sum(p => p.WeaponStats.Where(s => s.Weapon != 27).Sum(s => s.Headshots));
     private int TotalRevives => Players.Sum(p => p.WeaponStats.Where(s => s.Weapon == 27).Sum(s => s.Hits));
     private double TotalKdr => TotalDeaths <= 0 ? TotalKills : (double)TotalKills / TotalDeaths;
 

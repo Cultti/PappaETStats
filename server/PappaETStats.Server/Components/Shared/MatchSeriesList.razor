@@ -1,0 +1,41 @@
+@using Microsoft.EntityFrameworkCore
+@using PappaETStats.Server.Data
+@inject IDbContextFactory<StatsDbContext> DbFactory
+
+@if (_rows.Count > 0)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.h6" Class="mb-2">Matches</MudText>
+        <MudTable Items="_rows" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm" RowsPerPage="10" Elevation="0">
+            <HeaderContent><MudTh>Played at</MudTh><MudTh>Maps</MudTh><MudTh>Server</MudTh><MudTh>Score</MudTh></HeaderContent>
+            <RowTemplate Context="row">
+                <MudTd DataLabel="Played at"><MudLink Href="@($"/match-series/{row.Id}")">@PlayedAt(row.Start)</MudLink></MudTd>
+                <MudTd DataLabel="Maps">@row.Maps</MudTd><MudTd DataLabel="Server"><EtColoredText Text="@row.Server" /></MudTd>
+                <MudTd DataLabel="Score">@row.Team1Wins – @row.Team2Wins</MudTd>
+            </RowTemplate>
+            <PagerContent><MudTablePager PageSizeOptions="@(new[] { 10, 25, 50 })" /></PagerContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public string? PlayerGuid { get; set; }
+    private List<Row> _rows = [];
+    private sealed record Row(Guid Id, long Start, string Maps, string Server, int Team1Wins, int Team2Wins);
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var query = db.MatchSeries.AsNoTracking();
+        if (!string.IsNullOrEmpty(PlayerGuid)) query = query.Where(s => s.Maps.Any(m => m.Rounds.Any(r => r.Sides.Any(side => side.Players.Any(p => p.Guid == PlayerGuid.ToUpper())))));
+        var rows = await query.OrderByDescending(s => s.StartedAtUnix).Take(50)
+            .Select(s => new { s.Id, s.StartedAtUnix, Maps = s.Maps.OrderBy(m => m.MapNumber).Select(m => new { m.MapName, m.ServerName, m.Winner, m.SeriesTeam1Faction }).ToList() }).ToListAsync();
+        _rows = rows.Select(s => new Row(s.Id, s.StartedAtUnix, string.Join(" · ", s.Maps.Select(m => m.MapName)), s.Maps.FirstOrDefault()?.ServerName ?? "",
+            s.Maps.Count(m => (int?)m.Winner == m.SeriesTeam1Faction),
+            s.Maps.Count(m => (int?)m.Winner == 3 - m.SeriesTeam1Faction))).ToList();
+    }
+    private static string PlayedAt(long unix)
+    {
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(OperatingSystem.IsWindows() ? "FLE Standard Time" : "Europe/Helsinki");
+        return TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(unix), zone).ToString("d.M.yyyy HH:mm");
+    }
+}

@@ -1,0 +1,55 @@
+@using PappaETStats.Server.Services
+
+@foreach (var weaponAwards in new[] { false, true })
+{
+    var awards = Awards.Where(a => a.IsWeapon == weaponAwards).ToList();
+    @if (awards.Count > 0)
+    {
+        <section class="mt-5" aria-label="@(weaponAwards ? "Weapon awards" : Title)">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Filled.EmojiEvents" Color="Color.Primary" />
+                <MudText Typo="Typo.h5">@(weaponAwards ? "Weapon awards" : Title)</MudText>
+            </MudStack>
+            <MudGrid Spacing="2">
+                @foreach (var award in awards)
+                {
+                    <MudItem xs="12" sm="6" lg="4">
+                        <MudPaper Class="match-award pa-4" Elevation="1" data-award-name="@award.Name">
+                            <MudText Typo="Typo.h6">@award.Name</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">@award.Description</MudText>
+                            @foreach (var winner in award.Winners)
+                            {
+                                <div class="match-award-winner">
+                                    <MudLink Href="@($"/player/{winner.Guid}")"><EtColoredText Text="@winner.Name" /></MudLink>
+                                    <strong data-award-value="@winner.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)">@winner.DisplayValue</strong>
+                                </div>
+                            }
+                            @if (award.Rankings.Count > 1)
+                            {
+                                <MudExpansionPanels Elevation="0" Dense="true" Class="mt-2">
+                                    <MudExpansionPanel Text="Rankings">
+                                        <ol class="match-award-rankings">
+                                            @foreach (var row in award.Rankings.Take(5))
+                                            {
+                                                <li><div class="match-award-winner"><MudLink Href="@($"/player/{row.Guid}")"><EtColoredText Text="@row.Name" /></MudLink><span>@row.DisplayValue</span></div></li>
+                                            }
+                                        </ol>
+                                    </MudExpansionPanel>
+                                </MudExpansionPanels>
+                            }
+                        </MudPaper>
+                    </MudItem>
+                }
+            </MudGrid>
+        </section>
+    }
+}
+@if (Awards.Count > 0)
+{
+    <MudText Typo="Typo.caption" Class="d-block mt-3">Tied players share the award. Awards appear when their required stats are recorded.</MudText>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<MatchAward> Awards { get; set; } = [];
+    [Parameter] public string Title { get; set; } = "Match awards";
+}
