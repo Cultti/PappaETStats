@@ -56,6 +56,7 @@ The Lua script in [et-server/pappastats.lua](../et-server/pappastats.lua) POSTs 
 - `POST /api/matches`
   - Headers:
     - `Authorization: Bearer <token>`
+    - `Content-Encoding: gzip` is supported for compressed JSON uploads.
   - Body:
     - One JSON object (example below)
 

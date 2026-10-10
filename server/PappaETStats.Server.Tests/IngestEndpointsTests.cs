@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -24,6 +26,27 @@ namespace PappaETStats.Server.Tests;
 
 public sealed partial class IngestEndpointsTests
 {
+    [Fact]
+    public async Task GzipCompressedMatchUploadsAreAccepted()
+    {
+        await using var host = await TestHost.Start();
+        var json = JsonSerializer.Serialize(Payload("gzip", "cup-1", "Cup", 1));
+        var compressed = new MemoryStream();
+        await using (var gzip = new GZipStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            await gzip.WriteAsync(Encoding.UTF8.GetBytes(json));
+        }
+
+        using var content = new ByteArrayContent(compressed.ToArray());
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        content.Headers.ContentEncoding.Add("gzip");
+        var response = await host.Client.PostAsync("/api/matches", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await using var db = host.CreateDb();
+        Assert.Equal("gzip", (await db.Matches.SingleAsync()).ExternalMatchId);
+    }
+
     [Fact]
     public async Task RoundRetriesPreserveRowsRatingsAndSendOnlyOneWebhook()
     {
@@ -318,6 +341,7 @@ public sealed partial class IngestEndpointsTests
             builder.Logging.ClearProviders();
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(new IngestOptions { Token = "secret" }));
+            builder.Services.AddRequestDecompression();
             builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(new WebhookOptions
             { Url = webhook ? "https://webhook.invalid/completed" : null }));
             builder.Services.Configure<SkillRatingOptions>(_ => { });
@@ -337,6 +361,7 @@ public sealed partial class IngestEndpointsTests
                 builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
             }
             var app = builder.Build();
+            app.UseRequestDecompression();
             app.MapIngestEndpoints();
             if (renderPages)
             {

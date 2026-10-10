@@ -34,6 +34,7 @@ builder.Services.AddMudServices();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddRequestDecompression();
 
 // Reverse proxy support (nginx sets X-Forwarded-For/X-Forwarded-Proto/X-Forwarded-Host).
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -195,6 +196,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseForwardedHeaders();
+app.UseRequestDecompression();
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
 
