@@ -14,7 +14,7 @@
         {
             <MudTh style="width:1%"></MudTh>
         }
-        <MudTh>Start time</MudTh>
+        <MudTh>Played at</MudTh>
         <MudTh>Map</MudTh>
         @if (ShowTeams)
         {
@@ -32,7 +32,7 @@
                              ValueChanged="@(selected => OnRowSelectedChangedAsync(row, selected))" />
             </MudTd>
         }
-        <MudTd DataLabel="Start time">
+        <MudTd DataLabel="Played at">
             <MudLink Href="@($"/matches/{GetMatchId(row)}")" Underline="Underline.Always">@FormatHelsinkiFromUnixSeconds(GetRound1StartUnix?.Invoke(row))</MudLink>
         </MudTd>
         <MudTd DataLabel="Map">@(GetMapName?.Invoke(row) ?? "-")</MudTd>

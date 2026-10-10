@@ -22,6 +22,56 @@ namespace PappaETStats.Server.Tests;
 public sealed class IngestEndpointsTests
 {
     [Fact]
+    public async Task RoundRetriesPreserveRowsRatingsAndSendOnlyOneWebhook()
+    {
+        await using var host = await TestHost.Start(webhook: true);
+        var r1 = Payload("retry", "cup-1", "Cup", 1);
+        var r2 = Payload("retry", "cup-1", "Cup", 2);
+        await host.Post(r1);
+        await host.Post(r2);
+        Guid[] roundIds;
+        Dictionary<string, double> ratings;
+        await using (var db = host.CreateDb())
+        {
+            roundIds = await db.MatchRounds.OrderBy(r => r.RoundNumber).Select(r => r.Id).ToArrayAsync();
+            ratings = await db.Players.ToDictionaryAsync(p => p.Guid, p => p.Mu);
+            Assert.Equal(6, ratings.Count);
+        }
+        await host.Post(r1);
+        await host.Post(r2);
+        await host.Post(r2);
+        await using var after = host.CreateDb();
+        Assert.Equal(roundIds, await after.MatchRounds.OrderBy(r => r.RoundNumber).Select(r => r.Id).ToArrayAsync());
+        Assert.Equal(1, await after.Matches.CountAsync());
+        Assert.Equal(12, await after.MatchPlayers.CountAsync());
+        foreach (var player in await after.Players.ToListAsync()) Assert.Equal(ratings[player.Guid], player.Mu);
+        Assert.Equal(1, host.WebhookHandler.Requests);
+    }
+
+    [Fact]
+    public async Task FailedRoundReplacementRollsBackTheDeletion()
+    {
+        await using var host = await TestHost.Start();
+        var dto = Payload("replacement", "cup-1", "Cup", 2);
+        await host.Post(dto);
+        Guid originalId;
+        await using (var db = host.CreateDb())
+        {
+            originalId = (await db.MatchRounds.SingleAsync()).Id;
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE TRIGGER reject_round BEFORE INSERT ON MatchRounds
+                BEGIN SELECT RAISE(ABORT, 'Simulated storage failure'); END;
+                """);
+        }
+        var json = JsonSerializer.Serialize(dto).Replace("\"damage_given\":0", "\"damage_given\":10");
+        var response = await host.Client.PostAsync("/api/matches", new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        await using var after = host.CreateDb();
+        Assert.Equal(originalId, (await after.MatchRounds.SingleAsync()).Id);
+        Assert.Equal(6, await after.MatchPlayers.CountAsync());
+    }
+
+    [Fact]
     public async Task LastReadyUpsAreAuthenticatedNormalizedAndIdempotent()
     {
         await using var host = await TestHost.Start();
@@ -253,10 +303,11 @@ public sealed class IngestEndpointsTests
     private sealed class TestHost(WebApplication app, SqliteConnection connection, HttpClient client) : IAsyncDisposable
     {
         public HttpClient Client => client;
+        public CountingHttpHandler WebhookHandler => app.Services.GetRequiredService<CountingHttpHandler>();
         public ScoreboardCache ScoreboardCache => app.Services.GetRequiredService<ScoreboardCache>();
         public StatsDbContext CreateDb() => new(new DbContextOptionsBuilder<StatsDbContext>().UseSqlite(connection).Options);
 
-        public static async Task<TestHost> Start()
+        public static async Task<TestHost> Start(bool webhook = false)
         {
             var connection = new SqliteConnection("Data Source=:memory:");
             await connection.OpenAsync();
@@ -264,9 +315,12 @@ public sealed class IngestEndpointsTests
             builder.Logging.ClearProviders();
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(new IngestOptions { Token = "secret" }));
-            builder.Services.Configure<WebhookOptions>(_ => { });
+            builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(new WebhookOptions
+            { Url = webhook ? "https://webhook.invalid/completed" : null }));
             builder.Services.Configure<SkillRatingOptions>(_ => { });
-            builder.Services.AddHttpClient();
+            builder.Services.AddSingleton<CountingHttpHandler>();
+            builder.Services.AddHttpClient("Webhook").ConfigurePrimaryHttpMessageHandler(sp => sp.GetRequiredService<CountingHttpHandler>());
+            builder.Services.AddHttpClient(string.Empty).ConfigurePrimaryHttpMessageHandler(sp => sp.GetRequiredService<CountingHttpHandler>());
             builder.Services.AddDbContextFactory<StatsDbContext>(o => o.UseSqlite(connection));
             builder.Services.AddSingleton<ScoreboardCache>();
             var app = builder.Build();
@@ -301,6 +355,16 @@ public sealed class IngestEndpointsTests
             client.Dispose();
             await app.DisposeAsync();
             await connection.DisposeAsync();
+        }
+    }
+
+    private sealed class CountingHttpHandler : HttpMessageHandler
+    {
+        public int Requests { get; private set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
         }
     }
 }

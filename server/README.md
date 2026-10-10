@@ -61,6 +61,20 @@ The Lua script in [et-server/pappastats.lua](../et-server/pappastats.lua) POSTs 
 
 ### Round pairing
 
+Uploads are keyed by `matchID` and `round`, with database unique constraints.
+An identical retry returns the existing round ID without changing stats, ratings,
+or completion webhooks. Round replacements commit atomically, so a failed upload
+keeps the previous round. Replacements do not apply ratings or completion webhooks
+again; after correcting an already completed match, run
+`POST /api/admin/matches/recalculate-winners`, followed by
+`POST /api/admin/skillratings/recalculate` to rebuild ratings from the final history.
+`MatchRounds.RawJson` stores a compact SHA-256 ingest fingerprint; the original
+round JSON is archived by the game server.
+
+The match list orders games by a recorded round start, falling back to the round
+end and then ingestion time when timestamps are missing. Its "Played at" column
+uses the same timestamp, so older uploads with missing starts remain visible.
+
 `GET /api/matches/matchid` uses the ingest bearer token. Send `serverIp`,
 `serverPort`, `mapname`, and `round` (1 or 2). For round 2, also send `serverId`
 or `servername`. `serverId` is a stable, unique identifier of at most 256
@@ -313,6 +327,14 @@ they do not contact Discord or move real players.
 
 This backend stores the incoming payload in a relational form.
 
+The Lua collector snapshots players when they disconnect during play or
+intermission, before ET clears their client slot. These snapshots remain in the
+round upload even if players leave before the delayed send. Players are keyed by
+GUID, so a reconnect uses the current session counters once and a reused slot
+does not overwrite the departed player's stats. Snapshots expire at the next
+round start or game VM initialization. Collector regressions can be checked with
+`lua et-server/tests/pappastats_test.lua`.
+
 Per match (1 row):
 
 - `matchID`, `round`, `mapname`, `config`
@@ -320,7 +342,7 @@ Per match (1 row):
 - `defenderteam`, `winnerteam`
 - `timelimit`, `nextTimeLimit`
 - `roundStart`, `roundEnd`, `roundStartUnix`, `roundEndUnix`
-- `rawJson` (canonical re-serialization for debugging/replay)
+- `rawJson` (compact SHA-256 fingerprint of the original ingest DTO for retry detection)
 
 Per side/team (derived from `players[].team`):
 

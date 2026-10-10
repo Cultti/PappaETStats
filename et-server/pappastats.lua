@@ -44,6 +44,8 @@ local trap_SendConsoleCommand = et.trap_SendConsoleCommand
 local CON_CONNECTED = 2
 local maxClients = 64
 local connectedClients = {}
+-- Keep final round snapshots by GUID before ET clears a disconnected slot.
+local disconnectedPlayers = {}
 local currentGameState = et.GS_INITIALIZE
 
 -- Stats constants + match/round state
@@ -82,8 +84,10 @@ local DEMO_UPLOAD_MAX_ATTEMPTS = 15
 local classStats = {}
 local classState = {}
 
--- Current match id (shared across round 1 + round 2). Preserved across map_restart.
+-- The cvars survive Lua VM restarts, including an unavailable round 1 upload.
 local current_match_id = nil
+local MATCH_ID_CVAR = "pappa_stats_match_id"
+local MATCH_MAP_CVAR = "pappa_stats_match_map"
 
 -- Confirm ready commands after the engine applies pers.ready, preserving order.
 local readyUps = {}
@@ -569,6 +573,11 @@ local function get_current_mapname()
     return mapname or ""
 end
 
+local function remember_match_id()
+    et.trap_Cvar_Set(MATCH_ID_CVAR, current_match_id or "")
+    et.trap_Cvar_Set(MATCH_MAP_CVAR, get_current_mapname())
+end
+
 local function safe_number(v)
     return tonumber(v) or 0
 end
@@ -810,6 +819,7 @@ local function handle_gamestate_change()
             local fetched, err = fetchMatchIDFromAPI(authToken, server_ip, server_port, mapname, 1)
             if fetched then
                 current_match_id = fetched
+                remember_match_id()
                 log("Fetched matchID from API for demo: " .. tostring(current_match_id))
             else
                 log("Failed to fetch matchID from API for demo: " .. tostring(err))
@@ -819,6 +829,7 @@ local function handle_gamestate_change()
         local filename = start_demo_recording()
         log("Demo recording started: " .. tostring(filename))
     elseif newGamestate == et.GS_PLAYING then -- Game has started
+        disconnectedPlayers = {}
         round_start_time = trap_Milliseconds()
         round_start_unix = os.time()    
         -- New round started; cancel any pending send from a previous intermission.
@@ -947,92 +958,104 @@ end
 --     time_played_percent = <number>,
 --     xp = <number>
 --   }
-local function gather_player_stats()
-    local players = {}
+local function gather_client_stats(clientNum, nowMs)
+    if gentity_get(clientNum, "pers.connected") == CON_CONNECTED then
+        local userinfo = trap_GetUserinfo(clientNum)
+        if userinfo and userinfo ~= "" then
+            local guid = string.upper(Info_ValueForKey(userinfo, "cl_guid") or "")
+            if guid ~= "" then
+                local weaponMask = 0
+                local weaponStats = {}
 
-    local nowMs = trap_Milliseconds()
+                for weaponId = WS_KNIFE, WS_MAX - 1 do
+                    local ws = gentity_get(clientNum, "sess.aWeaponStats", weaponId)
+                    if type(ws) == "table" then
+                        local atts = safe_number(ws[1])
+                        local deaths = safe_number(ws[2])
+                        local headshots = safe_number(ws[3])
+                        local hits = safe_number(ws[4])
+                        local kills = safe_number(ws[5])
 
-    for clientNum in pairs(connectedClients) do
-        if gentity_get(clientNum, "pers.connected") == CON_CONNECTED then
-            local userinfo = trap_GetUserinfo(clientNum)
-            if userinfo and userinfo ~= "" then
-                local guid = string.upper(Info_ValueForKey(userinfo, "cl_guid") or "")
-                if guid ~= "" then
-                    local weaponMask = 0
-                    local weaponStats = {}
-
-                    for weaponId = WS_KNIFE, WS_MAX - 1 do
-                        local ws = gentity_get(clientNum, "sess.aWeaponStats", weaponId)
-                        if type(ws) == "table" then
-                            local atts = safe_number(ws[1])
-                            local deaths = safe_number(ws[2])
-                            local headshots = safe_number(ws[3])
-                            local hits = safe_number(ws[4])
-                            local kills = safe_number(ws[5])
-
-                            if atts ~= 0 or hits ~= 0 or deaths ~= 0 or kills ~= 0 then
-                                table_insert(weaponStats, {
-                                    weapon = weaponId,
-                                    hits = hits,
-                                    atts = atts,
-                                    kills = kills,
-                                    deaths = deaths,
-                                    headshots = headshots
-                                })
-                                weaponMask = weaponMask | (1 << weaponId)
-                            end
+                        if atts ~= 0 or hits ~= 0 or deaths ~= 0 or kills ~= 0 then
+                            table_insert(weaponStats, {
+                                weapon = weaponId,
+                                hits = hits,
+                                atts = atts,
+                                kills = kills,
+                                deaths = deaths,
+                                headshots = headshots
+                            })
+                            weaponMask = weaponMask | (1 << weaponId)
                         end
                     end
+                end
 
-                    -- Match StoreStats behavior: only store if at least one weapon has activity
-                    if weaponMask ~= 0 then
-                        local name = gentity_get(clientNum, "pers.netname") or ""
-                        local rounds = safe_number(gentity_get(clientNum, "sess.rounds"))
-                        local team = safe_number(gentity_get(clientNum, "sess.sessionTeam"))
+                -- Match StoreStats behavior: only store if at least one weapon has activity
+                if weaponMask ~= 0 then
+                    local name = gentity_get(clientNum, "pers.netname") or ""
+                    local rounds = safe_number(gentity_get(clientNum, "sess.rounds"))
+                    local team = safe_number(gentity_get(clientNum, "sess.sessionTeam"))
 
-                        local damageGiven = safe_number(gentity_get(clientNum, "sess.damage_given"))
-                        local damageReceived = safe_number(gentity_get(clientNum, "sess.damage_received"))
-                        local teamDamageGiven = safe_number(gentity_get(clientNum, "sess.team_damage_given"))
-                        local teamDamageReceived = safe_number(gentity_get(clientNum, "sess.team_damage_received"))
-                        local gibs = safe_number(gentity_get(clientNum, "sess.gibs"))
-                        local selfkills = safe_number(gentity_get(clientNum, "sess.self_kills"))
-                        local teamkills = safe_number(gentity_get(clientNum, "sess.team_kills"))
-                        local teamgibs = safe_number(gentity_get(clientNum, "sess.team_gibs"))
-                        local timeAxis = safe_number(gentity_get(clientNum, "sess.time_axis"))
-                        local timeAllies = safe_number(gentity_get(clientNum, "sess.time_allies"))
-                        local timePlayed = safe_number(gentity_get(clientNum, "sess.time_played"))
-                        local xp = safe_number(gentity_get(clientNum, "ps.persistant", PERS_SCORE))
+                    local damageGiven = safe_number(gentity_get(clientNum, "sess.damage_given"))
+                    local damageReceived = safe_number(gentity_get(clientNum, "sess.damage_received"))
+                    local teamDamageGiven = safe_number(gentity_get(clientNum, "sess.team_damage_given"))
+                    local teamDamageReceived = safe_number(gentity_get(clientNum, "sess.team_damage_received"))
+                    local gibs = safe_number(gentity_get(clientNum, "sess.gibs"))
+                    local selfkills = safe_number(gentity_get(clientNum, "sess.self_kills"))
+                    local teamkills = safe_number(gentity_get(clientNum, "sess.team_kills"))
+                    local teamgibs = safe_number(gentity_get(clientNum, "sess.team_gibs"))
+                    local timeAxis = safe_number(gentity_get(clientNum, "sess.time_axis"))
+                    local timeAllies = safe_number(gentity_get(clientNum, "sess.time_allies"))
+                    local timePlayed = safe_number(gentity_get(clientNum, "sess.time_played"))
+                    local xp = safe_number(gentity_get(clientNum, "ps.persistant", PERS_SCORE))
 
-                        local totalTeamTime = timeAxis + timeAllies
-                        local timePlayedPercent = (totalTeamTime == 0) and 0 or (100.0 * timePlayed / totalTeamTime)
+                    local totalTeamTime = timeAxis + timeAllies
+                    local timePlayedPercent = (totalTeamTime == 0) and 0 or (100.0 * timePlayed / totalTeamTime)
 
-                        local classStatsForGuid = classstats_snapshot(guid, nowMs)
+                    local classStatsForGuid = classstats_snapshot(guid, nowMs)
 
-                        table_insert(players, {
-                            clientNum = clientNum,
-                            guid = guid,
-                            name = name,
-                            rounds = rounds,
-                            team = team,
-                            class_stats = classStatsForGuid,
-                            weapon_stats = weaponStats,
-                            damage_given = damageGiven,
-                            damage_received = damageReceived,
-                            team_damage_given = teamDamageGiven,
-                            team_damage_received = teamDamageReceived,
-                            gibs = gibs,
-                            self_kills = selfkills,
-                            team_kills = teamkills,
-                            team_gibs = teamgibs,
-                            time_played_percent = timePlayedPercent,
-                            xp = xp
-                        })
-                    end
+                    return {
+                        clientNum = clientNum,
+                        guid = guid,
+                        name = name,
+                        rounds = rounds,
+                        team = team,
+                        class_stats = classStatsForGuid,
+                        weapon_stats = weaponStats,
+                        damage_given = damageGiven,
+                        damage_received = damageReceived,
+                        team_damage_given = teamDamageGiven,
+                        team_damage_received = teamDamageReceived,
+                        gibs = gibs,
+                        self_kills = selfkills,
+                        team_kills = teamkills,
+                        team_gibs = teamgibs,
+                        time_played_percent = timePlayedPercent,
+                        xp = xp
+                    }
                 end
             end
         end
     end
+    return nil
+end
 
+local function gather_player_stats()
+    local byGuid = {}
+    for guid, player in pairs(disconnectedPlayers) do
+        byGuid[guid] = player
+    end
+    local nowMs = trap_Milliseconds()
+    for clientNum in pairs(connectedClients) do
+        local player = gather_client_stats(clientNum, nowMs)
+        if player and (player.team == 1 or player.team == 2) then
+            -- Reconnecting players' current session stats supersede their
+            -- disconnect snapshot; each GUID occurs only once in a round.
+            byGuid[player.guid] = player
+        end
+    end
+    local players = {}
+    for _, player in pairs(byGuid) do table_insert(players, player) end
     return players
 end
 
@@ -1103,6 +1126,7 @@ function SendStats(authToken)
         end
     end
 
+    remember_match_id()
     local payload_tbl = gather_match_stats(current_match_id)
     local payload_str = json.encode(payload_tbl)
     if not payload_str then
@@ -1138,6 +1162,7 @@ end
 
 function et_InitGame(levelTime, randomSeed, restart)
     et.RegisterModname(modname .. " " .. version)
+    disconnectedPlayers = {}
 
     local token, tokenError = load_api_key()
     AUTH_TOKEN = token or ""
@@ -1147,7 +1172,7 @@ function et_InitGame(levelTime, randomSeed, restart)
         log("API authentication configured")
     end
 
-    -- Keep only in-memory state; backend match-id endpoint provides continuity across rounds.
+    -- Recover the ID below after resetting the per-VM state.
     if tonumber(restart) == 0 then
         current_match_id = nil
         obituaries = {}
@@ -1171,6 +1196,23 @@ function et_InitGame(levelTime, randomSeed, restart)
     initMaxClients()
     rebuild_connectedClients()
     currentGameState = tonumber(trap_Cvar_Get("gamestate")) or et.GS_INITIALIZE
+    if currentGameState == et.GS_WARMUP and safe_number(trap_Cvar_Get("g_currentRound")) == 0 then
+        current_match_id = nil
+        remember_match_id()
+    elseif trap_Cvar_Get(MATCH_MAP_CVAR) == get_current_mapname() then
+        local saved = trap_Cvar_Get(MATCH_ID_CVAR)
+        if saved and saved ~= "" then current_match_id = saved end
+    end
+    -- Countdown completion restarts the game VM. Lua can therefore initialize
+    -- in GS_PLAYING without ever observing a transition into it.
+    round_start_time = 0
+    round_start_unix = 0
+    round_end_time = 0
+    round_end_unix = 0
+    if currentGameState == et.GS_PLAYING then
+        round_start_time = trap_Milliseconds()
+        round_start_unix = os.time()
+    end
     readyUps = {}
     pendingReadyUp = nil
     readySequence = 0
@@ -1213,6 +1255,13 @@ function et_ClientDisconnect(clientNum)
     local guid = guid_for_client(clientNum)
     if guid ~= "" then
         classstats_finalize(guid, trap_Milliseconds())
+    end
+    local gamestate = tonumber(trap_Cvar_Get("gamestate"))
+    if gamestate == et.GS_PLAYING or gamestate == et.GS_INTERMISSION then
+        local player = gather_client_stats(clientNum, trap_Milliseconds())
+        if player and (player.team == 1 or player.team == 2) then
+            disconnectedPlayers[player.guid] = player
+        end
     end
     readyUps[guid] = nil
     if pendingReadyUp and pendingReadyUp.client == clientNum then pendingReadyUp = nil end

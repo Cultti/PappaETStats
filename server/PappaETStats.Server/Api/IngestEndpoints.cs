@@ -1,7 +1,9 @@
 using System.Text.Json;
+using System.Security.Cryptography;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Options;
 using PappaETStats.SkillRating;
 using PappaETStats.Server.Data;
@@ -342,22 +344,41 @@ public static class IngestEndpoints
         MatchIngestDto dto,
         CancellationToken cancellationToken)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-
         var authResult = ValidateBearerToken(request, ingestOptions);
         if (authResult is not null)
         {
             return authResult;
         }
 
+        await using var strategyDb = await dbFactory.CreateDbContextAsync(cancellationToken);
+        return await strategyDb.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            return await IngestMatchCoreAsync(db, transaction, webhookOptions, skillRatingOptions,
+                httpClientFactory, loggerFactory, scoreboardCache, dto, cancellationToken);
+        });
+    }
+
+    private static async Task<IResult> IngestMatchCoreAsync(
+        StatsDbContext db,
+        IDbContextTransaction transaction,
+        IOptions<WebhookOptions> webhookOptions,
+        IOptions<SkillRatingOptions> skillRatingOptions,
+        IHttpClientFactory httpClientFactory,
+        ILoggerFactory loggerFactory,
+        ScoreboardCache scoreboardCache,
+        MatchIngestDto dto,
+        CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(dto.MatchId))
         {
             return Results.BadRequest(new { error = "matchID is required" });
         }
 
-        if (dto.Round <= 0)
+        if (dto.Round is not (1 or 2))
         {
-            return Results.BadRequest(new { error = "round must be > 0" });
+            return Results.BadRequest(new { error = "round must be 1 or 2" });
         }
 
         if (string.IsNullOrWhiteSpace(dto.MapName))
@@ -431,14 +452,16 @@ public static class IngestEndpoints
         }
 
         var existingRound = await db.MatchRounds
-            .Include(r => r.Sides)
-                .ThenInclude(s => s.Players)
-                    .ThenInclude(p => p.WeaponStats)
-            .Include(r => r.Sides)
-                .ThenInclude(s => s.Players)
-                    .ThenInclude(p => p.ClassStats)
-            .Include(r => r.Obituaries)
             .FirstOrDefaultAsync(r => r.MatchId == match.Id && r.RoundNumber == dto.Round, cancellationToken);
+
+        // Keep a compact fingerprint of the original DTO, before normalization.
+        // Retried requests must not replace rows or apply ratings/webhooks again.
+        var fingerprint = "sha256:" + Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(dto)));
+        if (existingRound?.RawJson == fingerprint)
+        {
+            return Results.Ok(new { matchId = match.ExternalMatchId, round = existingRound.RoundNumber,
+                matchDbId = match.Id, roundDbId = existingRound.Id });
+        }
 
         if (existingRound is not null)
         {
@@ -569,7 +592,7 @@ public static class IngestEndpoints
             RoundStartUnix = dto.RoundStartUnix,
             RoundEndUnix = dto.RoundEndUnix,
             IngestedAtUtc = DateTime.UtcNow,
-            RawJson = "Not supported"
+            RawJson = fingerprint
         };
 
         // Persist overall match winner once round 2 is ingested.
@@ -720,9 +743,8 @@ public static class IngestEndpoints
 
         db.MatchRounds.Add(round);
         await db.SaveChangesAsync(cancellationToken);
-        scoreboardCache.Invalidate();
 
-        if (dto.Round == 2)
+        if (dto.Round == 2 && existingRound is null)
         {
             var logger = loggerFactory.CreateLogger("PappaETStats.Server.Api.IngestEndpoints");
 
@@ -734,13 +756,22 @@ public static class IngestEndpoints
                 round,
                 skillRatingOptions.Value,
                 cancellationToken);
+        }
 
+        // Replacement deletion, new stats and first-completion ratings commit
+        // together. A failed replacement leaves the previous round intact.
+        await transaction.CommitAsync(cancellationToken);
+        scoreboardCache.Invalidate();
+
+        if (dto.Round == 2 && existingRound is null)
+        {
+            var logger = loggerFactory.CreateLogger("PappaETStats.Server.Api.IngestEndpoints");
             await TrySendGameCompletedWebhookAsync(
                 httpClientFactory,
                 webhookOptions.Value,
                 logger,
                 match,
-            round1ForWinner,
+                round1ForWinner,
                 round,
                 CancellationToken.None);
         }

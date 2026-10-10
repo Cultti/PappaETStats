@@ -28,11 +28,16 @@ local function setup(serverId, hostname, apiResponse)
         GS_INITIALIZE = -1, CS_SERVERINFO = 0, CS_MULTI_INFO = 1, CS_MULTI_MAPWINNER = 2,
         GS_WARMUP = 2, GS_WARMUP_COUNTDOWN = 1, GS_PLAYING = 0, GS_INTERMISSION = 3,
         trap_Cvar_Get = function(key) return cvars[key] or "" end,
+        trap_Cvar_Set = function(key, value) cvars[key] = value end,
         trap_GetConfigstring = function(key) return key == 0 and cvars.mapname or "0" end,
         Info_ValueForKey = function(info) return info end,
         trap_GetUserinfo = function(client) return clients[client] and clients[client].guid or "" end,
         trap_Milliseconds = function() return now end,
-        gentity_get = function(client, field) return clients[client] and clients[client][field] or 0 end,
+        gentity_get = function(client, field, index)
+            local value = clients[client] and clients[client][field]
+            if index ~= nil and type(value) == "table" then return value[index] or 0 end
+            return value or 0
+        end,
         trap_SendConsoleCommand = function() end,
         RegisterModname = function() end,
         G_Print = function() end,
@@ -66,6 +71,29 @@ local function test(name, run)
     count = count + 1
     print("PASS " .. name)
 end
+
+test("initializing in playing records a start without a gamestate transition", function()
+    setup("cup-1", "Cup", { matchId = "match" })
+    cvars.gamestate = tostring(et.GS_PLAYING)
+    now = 5000
+    et_InitGame(5000, 0, 1)
+    now = 65000
+    cvars.gamestate = tostring(et.GS_INTERMISSION)
+    et_RunFrame(now)
+    assert(SendStats("test-key"))
+    assert(payload.roundStart == 5000 and payload.roundStartUnix == 1791048934)
+    assert(payload.roundEnd == 65000 and payload.roundEndUnix == 1791048934)
+end)
+
+test("warmup initialization clears the previous round timestamps", function()
+    setup("cup-1", "Cup", { matchId = "match" })
+    cvars.gamestate = tostring(et.GS_PLAYING)
+    et_RunFrame(now)
+    cvars.gamestate = tostring(et.GS_WARMUP)
+    et_InitGame(now, 0, 1)
+    assert(SendStats("test-key"))
+    assert(payload.roundStart == 0 and payload.roundStartUnix == 0)
+end)
 
 test("explicit identity is encoded in ID lookup and included in the payload", function()
     setup(" cup #1&test ", "Cup #1", { matchId = "server-one-match" })
@@ -107,6 +135,35 @@ test("fallback IDs differ across servers even with equal timestamps and uptime",
         ids[#ids + 1] = payload.matchID
     end
     assert(ids[1] ~= ids[2])
+end)
+
+test("a failed round one upload keeps its ID across a Lua VM restart", function()
+    setup("cup-1", "Cup", { error = "API unavailable" })
+    assert(SendStats("test-key"))
+    local id = payload.matchID
+    assert(id:match("^fallback%-"))
+    cvars.g_currentRound = "1"
+    cvars.gamestate = tostring(et.GS_WARMUP)
+    load_stats()
+    et_InitGame(0, 0, 1)
+    response = { matchId = "a-different-api-id" }
+    request = nil
+    cvars.g_currentRound = "0"
+    assert(SendStats("test-key"))
+    assert(payload.round == 2 and payload.matchID == id and request == nil)
+end)
+
+test("a new first-round warmup clears the persisted match ID", function()
+    setup("cup-1", "Cup", { matchId = "old-match" })
+    assert(SendStats("test-key"))
+    cvars.g_currentRound = "0"
+    cvars.gamestate = tostring(et.GS_WARMUP)
+    load_stats()
+    et_InitGame(0, 0, 0)
+    response = { matchId = "new-match" }
+    cvars.g_currentRound = "1"
+    assert(SendStats("test-key"))
+    assert(payload.matchID == "new-match")
 end)
 
 test("one Lua context reuses the same match ID across rounds", function()
@@ -200,6 +257,80 @@ test("ready tracking does no player checks outside warmup and countdown", functi
         assert(et_ClientCommand(0, "ready") == 0)
     end
     assert(#posts == 0)
+end)
+
+local function active_player(client, guid, damage)
+    player(client, guid)
+    clients[client]["sess.damage_given"] = damage
+    clients[client]["sess.aWeaponStats"] = { [4] = {20, 3, 1, 10, 2} }
+    clients[client]["sess.playerType"] = 2
+    clients[client]["ps.persistant"] = { [0] = 42 }
+    et_ClientBegin(client)
+    et_ClientSpawn(client, 0, 0, 0)
+end
+
+test("players who disconnect during play keep weapons, XP and finalized class time", function()
+    setup("cup-1", "Cup", { matchId = "match" })
+    cvars.gamestate = tostring(et.GS_PLAYING); et_RunFrame(now)
+    active_player(0, "a", 1000)
+    now = 5100
+    et_ClientDisconnect(0); clients[0] = nil
+    cvars.gamestate = tostring(et.GS_INTERMISSION); et_RunFrame(now)
+    assert(SendStats("test-key"))
+    assert(#payload.players == 1)
+    local p = payload.players[1]
+    assert(p.guid == string.rep("A",32) and p.team == 1 and p.damage_given == 1000 and p.xp == 42)
+    assert(p.weapon_stats[1].weapon == 4 and p.weapon_stats[1].kills == 2)
+    assert(p.class_stats[1].classId == 2 and p.class_stats[1].ms == 5000)
+end)
+
+test("disconnecting in intermission before the delayed send keeps the player", function()
+    setup("cup-1", "Cup", { matchId = "match" })
+    cvars.gamestate = tostring(et.GS_PLAYING); et_RunFrame(now)
+    active_player(0, "a", 1000)
+    cvars.gamestate = tostring(et.GS_INTERMISSION); et_RunFrame(now)
+    et_ClientDisconnect(0); clients[0] = nil
+    now = 5200; et_RunFrame(now)
+    assert(#payload.players == 1 and payload.players[1].damage_given == 1000)
+end)
+
+test("reused client slots preserve the departed GUID and the new player's GUID", function()
+    setup("cup-1", "Cup", { matchId = "match" })
+    cvars.gamestate = tostring(et.GS_PLAYING); et_RunFrame(now)
+    active_player(0, "a", 1000); et_ClientDisconnect(0)
+    active_player(0, "b", 2000)
+    assert(SendStats("test-key"))
+    local byGuid = {}
+    for _, p in ipairs(payload.players) do byGuid[p.guid] = p.damage_given end
+    assert(#payload.players == 2 and byGuid[string.rep("A",32)] == 1000 and byGuid[string.rep("B",32)] == 2000)
+end)
+
+test("a reconnected GUID uses current session counters exactly once", function()
+    setup("cup-1", "Cup", { matchId = "match" })
+    cvars.gamestate = tostring(et.GS_PLAYING); et_RunFrame(now)
+    active_player(0, "a", 1000); et_ClientDisconnect(0); clients[0] = nil
+    active_player(3, "a", 2000)
+    assert(SendStats("test-key"))
+    assert(#payload.players == 1 and payload.players[1].clientNum == 3 and payload.players[1].damage_given == 2000)
+end)
+
+test("warmup disconnects do not contribute stale session stats", function()
+    setup("cup-1", "Cup", { matchId = "match" })
+    active_player(0, "a", 1000); et_ClientDisconnect(0); clients[0] = nil
+    cvars.gamestate = tostring(et.GS_PLAYING); et_RunFrame(now)
+    assert(SendStats("test-key") and #payload.players == 0)
+end)
+
+test("disconnect snapshots expire on round start and VM initialization", function()
+    setup("cup-1", "Cup", { matchId = "match" })
+    cvars.gamestate = tostring(et.GS_PLAYING); et_RunFrame(now)
+    active_player(0, "a", 1000); et_ClientDisconnect(0); clients[0] = nil
+    cvars.gamestate = tostring(et.GS_WARMUP); et_RunFrame(now)
+    cvars.gamestate = tostring(et.GS_PLAYING); et_RunFrame(now)
+    assert(SendStats("test-key") and #payload.players == 0)
+    active_player(1, "b", 2000); et_ClientDisconnect(1); clients[1] = nil
+    et_InitGame(now,0,1)
+    assert(SendStats("test-key") and #payload.players == 0)
 end)
 
 print(string.format("%d PappaStats tests passed", count))

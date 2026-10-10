@@ -4,6 +4,7 @@
 @using MudBlazor
 @using PappaETStats.Server.Data
 @using PappaETStats.Server.Domain
+@using PappaETStats.Server.Services
 @using PappaETStats.Server.Components.Shared
 @inject IDbContextFactory<StatsDbContext> DbFactory
 @inject NavigationManager NavManager
@@ -43,7 +44,7 @@ else
 
                 <MatchListTable Items="_rows"
                                 GetMatchId="@(r => r.MatchId)"
-                                GetRound1StartUnix="@(r => r.Round1StartUnix)"
+                                GetRound1StartUnix="@(r => r.PlayedAtUnix)"
                                 GetMapName="@(r => r.MapName)"
                                 GetServerName="@(r => r.ServerName)"
                                 GetTeam1PlayerCount="@(r => r.Team1PlayerCount)"
@@ -51,7 +52,7 @@ else
                                 GetTimeText="@(r => $"{(r.Round1NextTimeLimit ?? "-")} / {(r.Round2NextTimeLimit ?? "-")}")"
                                 EnableSelection="true"
                                 IsSelected="@(r => _selectedMatchIds.Contains(r.MatchId))"
-                                OnSelectionChanged="@((MatchListTable<Round2Row>.MatchSelectionChangedEventArgs<Round2Row> args) => OnMatchSelectionChanged(args))"
+                                OnSelectionChanged="@((MatchListTable<MatchListRow>.MatchSelectionChangedEventArgs<MatchListRow> args) => OnMatchSelectionChanged(args))"
                                 Dense="true" />
             }
         </MudItem>
@@ -109,7 +110,7 @@ else
 }
 
 @code {
-    private List<Round2Row>? _rows;
+    private List<MatchListRow>? _rows;
     private List<PlayerRow>? _players;
     private readonly HashSet<Guid> _selectedMatchIds = [];
 
@@ -117,20 +118,6 @@ else
     private double[] _mapPieData = Array.Empty<double>();
 
     private static readonly int[] PlayerPageSizeOptions = [10, 25, 50, 100];
-
-    private sealed record Round2Row(
-        Guid MatchId,
-        long? Round1StartUnix,
-        DateTime IngestedAtUtc,
-        string? MapName,
-        string? ServerName,
-        int? Team1PlayerCount,
-        int? Team2PlayerCount,
-        string? Round2NextTimeLimit,
-        int Round2WinnerTeam,
-        string? Round1TimeLimit,
-        string? Round1NextTimeLimit,
-        int? Round1WinnerTeam);
 
     private sealed record PlayerRow(
         string Guid,
@@ -167,36 +154,7 @@ else
             _mapPieData = mapCounts.Select(x => (double)x.Count).ToArray();
         }
 
-        // Avoid Include cycles (Match -> Rounds -> Match ...) in no-tracking queries by
-        // projecting only the fields needed for the frontpage.
-        _rows = await (
-            from r2 in db.MatchRounds.AsNoTracking()
-            where r2.RoundNumber == 2
-            join m in db.Matches.AsNoTracking() on r2.MatchId equals m.Id
-            join s1j in db.MatchSides.AsNoTracking().Where(x => x.Team == 1) on r2.Id equals s1j.MatchRoundId into s1g
-            from s1 in s1g.DefaultIfEmpty()
-            join s2j in db.MatchSides.AsNoTracking().Where(x => x.Team == 2) on r2.Id equals s2j.MatchRoundId into s2g
-            from s2 in s2g.DefaultIfEmpty()
-            join r1 in db.MatchRounds.AsNoTracking().Where(x => x.RoundNumber == 1)
-                on r2.MatchId equals r1.MatchId into r1g
-            from r1 in r1g.DefaultIfEmpty()
-            orderby (r1 == null ? (long?)null : r1.RoundStartUnix) descending, r2.IngestedAtUtc descending
-            select new Round2Row(
-                r2.MatchId,
-                r1 != null ? r1.RoundStartUnix : (long?)null,
-                r2.IngestedAtUtc,
-                m.MapName,
-                m.ServerName,
-                s1 != null ? s1.PlayerCount : (int?)null,
-                s2 != null ? s2.PlayerCount : (int?)null,
-                r2.NextTimeLimit,
-                r2.WinnerTeam,
-                r1 != null ? r1.TimeLimit : null,
-                r1 != null ? r1.NextTimeLimit : null,
-                r1 != null ? r1.WinnerTeam : (int?)null)
-        )
-        .Take(50)
-        .ToListAsync();
+        _rows = await CompletedMatches.Query(db).Take(50).ToListAsync();
 
         var playerRowsRaw = await (
             from p in db.MatchPlayers.AsNoTracking()
@@ -237,7 +195,7 @@ else
     private static string PlayerHref(string guid)
         => $"/player/{Uri.EscapeDataString((guid ?? string.Empty).Trim())}";
 
-    private Task OnMatchSelectionChanged(MatchListTable<Round2Row>.MatchSelectionChangedEventArgs<Round2Row> args)
+    private Task OnMatchSelectionChanged(MatchListTable<MatchListRow>.MatchSelectionChangedEventArgs<MatchListRow> args)
     {
         if (args.IsSelected)
         {
@@ -273,7 +231,7 @@ else
         NavManager.NavigateTo($"/matches/combined?{query}");
     }
 
-    private static string MatchResultText(Round2Row round2)
+    private static string MatchResultText(MatchListRow round2)
     {
         if (round2.Round1WinnerTeam is null)
         {
