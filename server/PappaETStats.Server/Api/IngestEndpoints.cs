@@ -1129,7 +1129,7 @@ public static class IngestEndpoints
             return teamId;
         }
 
-        var matchLink = CombineUrl(options.FrontendBaseUrl, $"/matches/{match.Id}");
+        var seriesLink = CombineUrl(options.FrontendBaseUrl, $"/match-series/{match.SeriesId}");
 
         static string FormatSideTime(MatchRound? round)
         {
@@ -1184,7 +1184,7 @@ public static class IngestEndpoints
             winner = winnerText,
             time,
             teams,
-            link = matchLink,
+            link = seriesLink,
         };
 
         try

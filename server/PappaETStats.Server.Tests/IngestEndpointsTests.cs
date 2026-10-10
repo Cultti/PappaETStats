@@ -75,6 +75,19 @@ public sealed partial class IngestEndpointsTests
     }
 
     [Fact]
+    public async Task CompletionWebhookLinksToTheMatchSeries()
+    {
+        await using var host = await TestHost.Start(webhook: true, frontendBaseUrl: "https://et.aukko.net/");
+        await host.Post(Payload("series-link", "cup-1", "Cup", 1));
+        await host.Post(Payload("series-link", "cup-1", "Cup", 2));
+
+        await using var db = host.CreateDb();
+        var seriesId = (await db.Matches.SingleAsync()).SeriesId;
+        using var payload = JsonDocument.Parse(Assert.Single(host.WebhookHandler.Bodies));
+        Assert.Equal($"https://et.aukko.net/match-series/{seriesId}", payload.RootElement.GetProperty("link").GetString());
+    }
+
+    [Fact]
     public async Task FailedRoundReplacementRollsBackTheDeletion()
     {
         await using var host = await TestHost.Start();
@@ -333,7 +346,7 @@ public sealed partial class IngestEndpointsTests
         public ScoreboardCache ScoreboardCache => app.Services.GetRequiredService<ScoreboardCache>();
         public StatsDbContext CreateDb() => new(new DbContextOptionsBuilder<StatsDbContext>().UseSqlite(connection).Options);
 
-        public static async Task<TestHost> Start(bool webhook = false, bool renderPages = false)
+        public static async Task<TestHost> Start(bool webhook = false, bool renderPages = false, string? frontendBaseUrl = null)
         {
             var connection = new SqliteConnection("Data Source=:memory:");
             await connection.OpenAsync();
@@ -343,7 +356,7 @@ public sealed partial class IngestEndpointsTests
             builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(new IngestOptions { Token = "secret" }));
             builder.Services.AddRequestDecompression();
             builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(new WebhookOptions
-            { Url = webhook ? "https://webhook.invalid/completed" : null }));
+            { Url = webhook ? "https://webhook.invalid/completed" : null, FrontendBaseUrl = frontendBaseUrl }));
             builder.Services.Configure<SkillRatingOptions>(_ => { });
             builder.Services.AddSingleton<CountingHttpHandler>();
             builder.Services.AddHttpClient("Webhook").ConfigurePrimaryHttpMessageHandler(sp => sp.GetRequiredService<CountingHttpHandler>());
@@ -408,10 +421,13 @@ public sealed partial class IngestEndpointsTests
     private sealed class CountingHttpHandler : HttpMessageHandler
     {
         public int Requests { get; private set; }
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        public List<string> Bodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests++;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+            Bodies.Add(await request.Content!.ReadAsStringAsync(cancellationToken));
+            return new HttpResponseMessage(HttpStatusCode.OK);
         }
     }
 }

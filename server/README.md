@@ -403,4 +403,4 @@ Payload shape:
 - `map` (string)
 - `winner` (string; `Team 1`, `Team 2`, or `Draw`)
 - `teams` (array of `{ name, players[] }`)
-- `link` (string; points directly to `/matches/{matchDbId}`)
+- `link` (string; points directly to `/match-series/{seriesId}`)
